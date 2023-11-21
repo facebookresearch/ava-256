@@ -1,0 +1,35 @@
+DEC 20 EXPIRE
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211123-1247-gkh125
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211119-0812-ddf659
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211111-1300-gjb719
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211110-0752-xdg960
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211109-1310-tyk727
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211102-0837-pac264
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211101-0822-zev994
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211012-1209-row429
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211012-0758-nyg431
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211007-1345-dnp071
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220113-0840-ros208
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211209-1312-lxo890
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211208-1206-vke790
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211208-0751-byj247
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211206-0810-mzg955
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211203-0749-btq415
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211202-0756-vqd438
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211201-0800-syw068
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211130-0802-rrh464
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220401-0841-pht202
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220315-0818-hdz165
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220314-1318-onu579
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220314-0829-whl690
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220215-0801-onk705
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220214-1026-tsb427
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220214-0846-hos732
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220202-1333-lcg680
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20220202-0844-thn461
+-rw-r--r-- 1 jinkyuk users   69 Nov 15 12:41 20211108-1309-ajd691
+DEC 8 EXPIRE 
+-rw-r--r-- 1 jinkyuk users   68 Nov 15 12:51 20210504-0803-edl430
+-rw-r--r-- 1 jinkyuk users   68 Nov 15 12:51 20210510-1347-pco068
+-rw-r--r-- 1 jinkyuk users   68 Nov 15 12:51 20210526-1356-xlc201
+-rw-r--r-- 1 jinkyuk users   68 Nov 15 12:51 20210504-1342-njy448

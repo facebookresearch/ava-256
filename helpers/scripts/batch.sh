@@ -1,0 +1,10 @@
+bash eval-camab-aug12-ajd691.sh
+bash eval-camab-aug12-avw368.sh
+bash eval-camab-aug12-byj247.sh
+bash eval-camab-aug12-edl430.sh
+bash eval-camab-aug12-gui516.sh
+bash eval-camab-aug12-njy448.sh
+bash eval-camab-aug12-pco068.sh
+bash eval-camab-aug12-row429.sh
+bash eval-camab-aug12-vke790.sh
+bash eval-camab-aug12-ybn667.sh
