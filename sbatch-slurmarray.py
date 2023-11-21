@@ -121,7 +121,6 @@ def setup_job(args):
         program_name = args.program_name
         optimizer = args.optimizer
 
-    os.environ["RSC_AVATAR_PYUTILS_PATH"] = "/checkpoint/avatar/jinkyuk/pyutils"
     os.environ["RSC_AVATAR_METADATA_PATH"] = "/checkpoint/avatar/jinkyuk/meta-data"
     os.environ["RSC_AVATAR_RSCASSET_PATH"] = "/checkpoint/avatar/jinkyuk/rsc-assets"
     os.environ["RSC_AVATAR_READONLY_PATH"] = "/checkpoint/avatar/jinkyuk/read-only"
@@ -249,7 +248,7 @@ def main(scheduler_args: Optional[List[str]] = None):
         run_batch(env=os.environ.copy(), sbatch_cmd_str=sbatch_cmd_str, sbatch_cmd=sbatch_cmd)
     else:
         # pass environment variable to remotely run process
-        envars=['RSC_AVATAR_PYUTILS_PATH', 'RSC_AVATAR_METADATA_PATH', 'RSC_AVATAR_RSCASSET_PATH', 'RSC_AVATAR_READONLY_PATH', 'RSC_AVATAR_DEBUGDATA_PATH', 'RSC_AVATAR_EVAL_CONFIG_PATH', 'CONDA_PREFIX', 'LD_LIBRARY_PATH', 'RSC_EXP_RUN_BASE_DIR', 'RSC_RUN_SLURM_SNAPSHOT_DIR', 'RSC_UA_MINI_BATCH_SIZE', 'RSC_UA_MAX_ITER', 'RSC_UA_NUM_AIRSTORE_WORKERS', 'RSC_CONFIG_DIR', 'RSC_CONFIG_DIR', 'RSC_PROGRAM_NAME', 'RSC_JOB_RESUME_DIR', 'RSC_JOB_UUID']
+        envars=['RSC_AVATAR_METADATA_PATH', 'RSC_AVATAR_RSCASSET_PATH', 'RSC_AVATAR_READONLY_PATH', 'RSC_AVATAR_DEBUGDATA_PATH', 'RSC_AVATAR_EVAL_CONFIG_PATH', 'CONDA_PREFIX', 'LD_LIBRARY_PATH', 'RSC_EXP_RUN_BASE_DIR', 'RSC_RUN_SLURM_SNAPSHOT_DIR', 'RSC_UA_MINI_BATCH_SIZE', 'RSC_UA_MAX_ITER', 'RSC_UA_NUM_AIRSTORE_WORKERS', 'RSC_CONFIG_DIR', 'RSC_CONFIG_DIR', 'RSC_PROGRAM_NAME', 'RSC_JOB_RESUME_DIR', 'RSC_JOB_UUID']
         estring=""
         for var in envars:
             estring += "&& "

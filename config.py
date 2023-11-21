@@ -40,10 +40,8 @@ def get_renderoptions():
 
 def create_uv_baridx(geofile, trifile, barfiles):
 
-    # import pyutils
     import cv2
 
-    # _, vt, vi, vti = pyutils.load_obj(geofile)
     dotobj = typed.load(geofile, extension='obj')
     vt, vi, vti = dotobj['vt'], dotobj['vi'], dotobj['vti']
 
@@ -84,7 +82,6 @@ def get_autoencoder(dataset, disable_id_encoder=False, encoder_channel_mult=1):
     import models.raymarchers.mvpraymarcher_new as raymarcherlib
     import models.colorcals.colorcal_multi as colorcalib
     import models.bg.mlp2d_multi as bglib
-    # import pyutils
 
     allcameras = dataset.get_allcameras()
     ncams = len(allcameras)
@@ -98,7 +95,6 @@ def get_autoencoder(dataset, disable_id_encoder=False, encoder_channel_mult=1):
     objpath = f"{apath}/geotextop.obj"
 
     # objpath = "/home/julietamartinez/rsc/CARE/care/assets/topologies/vae_v1/face_topo.obj"
-    # v, vt, vi, vti = pyutils.load_obj(objpath)
     dotobj = typed.load(objpath, extension="obj")
     v, vt, vi, vti = dotobj['v'], dotobj['vt'], dotobj['vi'], dotobj['vti']
     vt = np.array(vt, dtype=np.float32)
@@ -1214,7 +1210,6 @@ if __name__ == "__main__":
     objpath = f"{apath}/geotextop.obj"
 
     # objpath = "/home/julietamartinez/rsc/CARE/care/assets/topologies/vae_v1/face_topo.obj"
-    # v, vt, vi, vti = pyutils.load_obj(objpath)
     dotobj = typed.load(objpath, extension="obj")
     v, vt, vi, vti = dotobj['v'], dotobj['vt'], dotobj['vi'], dotobj['vti']
     vt = np.array(vt, dtype=np.float32)

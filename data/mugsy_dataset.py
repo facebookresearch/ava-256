@@ -311,7 +311,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         self.frames = sorted(np.unique(self.framelist["frame_id"].values))
 
         # TODO(julieta) check if this is needed
-        self.setup = False
+        self.is_setup = False
 
         # Normalization stats
         texmean = np.asarray(Image.open(os.path.join(minisis_folder, "codec", "tex_mean.png")), dtype=np.float32)
@@ -358,7 +358,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
     def setup(self) -> None:
         """This func is suppose to be called by each of the worker"""
         register_airstore_in_fsspec()
-        self.setup = True
+        self.is_setup = True
 
     def fetch_airstore_data(self, frame_id: str, camera_id: str) -> Optional[Dict[str, np.ndarray]]:
 
@@ -375,7 +375,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         # mugsy_gaze_vectors
 
         # Check if the worker is initialized
-        if not self.setup:
+        if not self.is_setup:
             self.setup()
 
         if camera_id not in self.cambyte_transforms:

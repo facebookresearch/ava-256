@@ -7,7 +7,6 @@ import torch.nn.functional as F
 import os
 import models.utils
 
-import pyutils
 import time
 
 from math import sqrt

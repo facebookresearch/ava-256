@@ -20,7 +20,6 @@ import torch
 import torch.distributed as dist
 import torch.utils.data
 import time
-import constant
 import psutil
 import pathlib
 
@@ -29,16 +28,10 @@ import pandas as pd
 from lion_pytorch import Lion
 from torch.utils.tensorboard import SummaryWriter
 from subprocess import CalledProcessError
-from dadapt_adam import DAdaptAdam
 
 from data.mugsy_dataset import MugsyCapture
 from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
 from data.mugsy_dataset import none_collate_fn
-from data.mgr_dataset import MultiCaptureDataset as MGRMultiCaptureDataset
-
-# from data.nr_dataset import MugsyCapture, MultiCaptureDataset, none_collate_fn
-# from data.mgr_dataset import MultiCaptureDataset, none_collate_fn
-# from data.mgr_iterable import MultiCaptureDataset, none_collate_fn, MGR_PER_FRAME_DATASET, MGR_PER_CAPTURE_DATASET, MGR_SEED
 
 from models.volumetric_multi3 import (
     AETIME,
@@ -62,42 +55,8 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-#from airstoredl import airdl # for airstore
-# no customized dataloader any more --> all airstore init steps are moved to user-defined dataset class in ./data directory
-
+# TODO(julieta) see if this actually does anything
 torch.backends.cudnn.benchmark = True # gotta go fast!
-
-# Sanity check on PATH ENV VARIABLES
-if os.getenv('RSC_AVATAR_PYUTILS_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_PYUTILS_PATH NOT FOUND")
-
-if os.getenv('RSC_JOB_UUID', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_JOB_UUID NOT FOUND")
-
-if os.getenv('RSC_AVATAR_METADATA_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_AVATAR_METADATA_PATH NOT FOUND")
-
-if os.getenv('RSC_AVATAR_RSCASSET_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_AVATAR_RSCASSET_PATH NOT FOUND")
-
-if os.getenv('RSC_AVATAR_READONLY_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_READONLY_PATH NOT FOUND")
-
-if os.getenv('RSC_AVATAR_DEBUGDATA_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_DEBUGDATA_PATH NOT FOUND")
-
-if os.getenv('RSC_AVATAR_EVAL_CONFIG_PATH', 'NOTFOUND') == 'NOTFOUND':
-    assert(False, "RSC_AVATAR_EVAL_CONFIG_PATH NOT FOUND")
-
-
-sys.path.append(os.getenv('RSC_AVATAR_PYUTILS_PATH'))
-logging.info(f"sys path {sys.path}")
-import pyutils
-
-nbatch_prefetch = 20
-
-KLIST_CMD = "klist"
-KLIST_CMD_TIMEOUT_SECONDS = 60
 
 
 def display_cudamem(msg, devcnt):
@@ -303,36 +262,6 @@ def log_perf_stats(iternum, rank, perf_stats):
 
     reset_perf_stats(perf_stats)
 
-def log_job_config(job_config):
-    base_dir = os.environ["RSC_EXP_RUN_BASE_DIR"]
-    config_file_name = os.path.join(base_dir, "job-config.json")
-    with open(config_file_name, 'w') as f:
-        json.dump(job_config, f)
-
-def read_job_config():
-    config_dict = None
-    base_dir = os.environ["RSC_EXP_RUN_BASE_DIR"]
-    config_file_name = os.path.join(base_dir, "job-config.json")
-    if os.path.isfile(config_file_name):
-        with open(config_file_name) as config_file:
-            config_dict = json.load(config_file)
-    return config_dict
-
-
-# parse slurm_job_nodes and find the first node in the list for rendezvous point
-def find_masternode(slurm_job_nodes):
-    master=None
-    # having more than 1 nodes - ava/rsclearn[XXXX-YYY] or ava/rsclearn[XXXX,YYYY] or ava/rsclearn[XXX-YYY,ZZZZ] or ava/rsclearn[XXXX
-    if '[' in slurm_job_nodes:
-        masterno = slurm_job_nodes.split('[')[1].split(',')[0].split('-')[0]
-        master = slurm_job_nodes.split('[')[0] + masterno
-    else:
-        # rsclearnXXXX / avalearnXXXX
-        master = slurm_job_nodes
-
-    return master
-
-
 
 if __name__ == "__main__":
     __spec__ = None # to use ipdb
@@ -350,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument('--nostab', action='store_true', help='don\'t check loss stability')
     parser.add_argument('--rank', type=int, default=0,  help='process rank in distributed training')
     parser.add_argument('--worldsize', type=int, default=1,  help='the number of processes for distributed training')
-    parser.add_argument('--masterip', type=str, default="100.104.139.188", help='master node ip address')
+    parser.add_argument('--masterip', type=str, default="localhost", help='master node ip address')
     parser.add_argument('--masterport', type=str, default="43321", help='master node network port')
     parser.add_argument('--holdoutpath', type=str, default=None, help='directory to holdout info')
     parser.add_argument('--holdoutratio', type=str, default=None, help='cam hold out ratio')
@@ -398,19 +327,15 @@ if __name__ == "__main__":
     logallrankstb = bool(args.logallrankstb)
     enableddp = not args.disableddp
 
-    local_id = os.environ.get("SLURM_LOCALID")
-    args.worldsize = int(os.environ.get("SLURM_NTASKS"))
-    args.rank = int(os.environ.get("SLURM_PROCID"))
-    outpath = os.environ['RSC_RUN_DIR'] # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
+    # TODO(julieta) remove all references to SLURM variables
+    args.worldsize = int(os.environ.get("SLURM_NTASKS", 1))
+    args.rank = int(os.environ.get("SLURM_PROCID", 0))
 
-    tlogpath = "{}/log-r{}.txt".format(os.environ['RSC_RUN_DIR'], args.rank)
+    outpath = os.environ.get('RSC_RUN_DIR', os.path.abspath(__file__)) # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
 
-    py_file_handler = logging.FileHandler(f"{os.environ['RSC_RUN_DIR']}/py-log-r{args.rank}.txt")
-    py_file_handler.setFormatter(formatter)
-    root.addHandler(py_file_handler)
+    tlogpath = "{}/log-r{}.txt".format(outpath, args.rank)
 
     # if path exists append automatically
-    log = pyutils.Logger2(tlogpath, os.path.isfile(tlogpath))
     logging.info(f"Python {sys.version}")
     logging.info(f"PyTorch {torch.__version__}")
     logging.info(" ".join(sys.argv))
@@ -466,10 +391,10 @@ if __name__ == "__main__":
     #args.masterip = os.environ.get("SLURM_SUBMIT_HOST")
     slurm_job_nodes_tmp = os.environ.get("SLURM_JOB_NODELIST") # string type: rsclearnXXXX or rsclearn[XXXX-YYY,...]
     logging.info(f"slurm_job_nodes_tmp: type {type(slurm_job_nodes_tmp)}, content {slurm_job_nodes_tmp}")
-    master_node = find_masternode(slurm_job_nodes_tmp)
 
-    logging.info(f"slurm_job_nodes: {master_node}")
-    args.masterip = master_node
+    # master_node = find_masternode(slurm_job_nodes_tmp)
+    # logging.info(f"slurm_job_nodes: {master_node}")
+    # args.masterip = master_node
 
     logging.info(f"master ip {args.masterip}")
 
@@ -481,60 +406,6 @@ if __name__ == "__main__":
 
     # TODO(julieta) get the number of workers from the command line
     numworker = 4
-
-
-    # if os.environ.get("RSC_UA_NUM_AIRSTORE_WORKERS", None):
-    #     numworker = int(os.environ.get("RSC_UA_NUM_AIRSTORE_WORKERS"))
-
-    resume = False
-    resume_dir = os.environ.get('RSC_JOB_RESUME_DIR', None)
-    if resume_dir:
-        resume = True
-
-    # FOR SLURM REQUEUE SUPPORT: remove RSC JOB REQUEUE DIR since slurm will not provide that.
-    requeue = False
-    requeue_dir = os.environ.get('RSC_JOB_REQUEUE_DIR', None)
-
-    requeue_iternum = None
-    jconfig = read_job_config()
-
-    assert jconfig != None
-
-    requeue_iternum = jconfig["num_iterations"]
-
-    logging.warning(" REQUEUE_DIR : {}".format(requeue_dir))
-    logging.warning(" JCONFIG : {} -- REQUEUE_ITERNUM {}".format(jconfig, requeue_iternum))
-
-
-    if requeue_dir: # MANUAL REQUEUE
-        requeue = True
-        logging.info(" MANUAL REQUEUE BY SUBMITTING JOB WITH REQUEUE DIRECTORY : ")
-        #jconfig = read_job_config()
-        assert requeue_iternum >  0
-        #requeue_iternum = jconfig["num_iterations"]
-
-    # "&& requeue_dir is not None" is needs.  Without requeue_dir --> should not set requeue=True
-    elif ( (requeue_iternum > 0) and (requeue_dir is not None) ) : # SLURM REQUEUE
-        requeue = True
-        logging.info(" SLURM REQUEUE STARTS : ")
-        requeue_dir = os.environ["RSC_EXP_RUN_BASE_DIR"]
-
-
-    # if requeue_iternum <= 0: requeue should be set to False
-    if requeue_iternum <= 0:
-        assert requeue == False
-
-
-    if args.rank == 0:
-        logging.info("******* ARGUMENT SUMMARY ******")
-        logging.info(" resume : {}".format(resume))
-        logging.info(" requeue : {}".format(requeue))
-        logging.info(" debugprefetch : {}".format(args.debugprefetch))
-        logging.info(" numworkers : {}".format(numworker))
-        logging.info(" worldsize : {}".format(args.worldsize))
-
-    # if enableddp != True:
-    #     rank = 0
 
     if enableddp or args.worldsize > 1:
         # Start a ddp group even if ddp is "disabled" because we want to be able to average losses across all ranks
@@ -579,46 +450,17 @@ if __name__ == "__main__":
     logging.info("@@@@@@ image related configs: subsample_size {}, downsample {}".format(args.subsample_size, args.downsample))
 
     # Load
-    if args.dataset.lower() == "mugsy":
-        nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
-        nr_captures = [MugsyCapture(mcd=row['mcd'], mct=row['mct'], sid=row['sid'], is_relightable=False) for _, row in nr_captures.iterrows()]
+    nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
+    nr_captures = [MugsyCapture(mcd=row['mcd'], mct=row['mct'], sid=row['sid'], is_relightable=False) for _, row in nr_captures.iterrows()]
 
-        r_captures =  pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
-        r_captures =  [MugsyCapture(mcd=row['mcd'], mct=row['mct'], sid=row['sid'], is_relightable=True) for _, row in r_captures.iterrows()]
+    r_captures =  pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
+    r_captures =  [MugsyCapture(mcd=row['mcd'], mct=row['mct'], sid=row['sid'], is_relightable=True) for _, row in r_captures.iterrows()]
 
-        captures = nr_captures + r_captures
+    captures = nr_captures + r_captures
 
-        train_captures = captures[:args.nids]
-        train_captures = np.array_split(train_captures, worldsize)[args.rank]
-        dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
-
-    elif args.dataset.lower() == "mgr":
-        # Get the second capture, seems to work ok
-        captures = pd.read_csv(pathlib.Path(__file__).parent / "12543id.csv", dtype=str)# ["sid"].values.astype(str)
-        bad_captures = pd.read_csv(pathlib.Path(__file__).parent / "12543id_bad.csv", dtype=str)# ["sid"].values.astype(str)
-
-        # Remove bad captures from all captures
-        captures = captures[~captures["sid"].isin(bad_captures["sid"])].dropna()
-        captures = captures["sid"].values.astype(str)
-
-        train_captures = captures[:args.nids]
-        # print(train_captures)
-        train_captures = np.array_split(train_captures, worldsize)[args.rank]
-        dataset = MGRMultiCaptureDataset(train_captures, downsample=args.downsample)
-
-        # quit()
-        # # TODO(julieta) Select based on worldsize
-        # dataset = MultiCaptureDataset(
-        #     global_rank=0,
-        #     world_size=1,
-        #     per_frame_dataset=MGR_PER_FRAME_DATASET,
-        #     per_capture_dataset=MGR_PER_CAPTURE_DATASET,
-        #     subjects=train_captures,
-        #     n_max_epochs=1,
-        #     seed=MGR_SEED,
-        # )
-    else:
-        raise ValueError("Unknown dataset {}".format(args.dataset))
+    train_captures = captures[:args.nids]
+    train_captures = np.array_split(train_captures, worldsize)[args.rank]
+    dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
 
     logging.info("DS SET UP IS DONE  -- number of workers : {} -- using configfile ings ".format(numworker))
 
@@ -663,8 +505,7 @@ if __name__ == "__main__":
     ae = profile.get_autoencoder(dataset, args.disable_id_encoder, args.encoder_channel_mult)
     ae = ae.to("cuda").train()
 
-    job_config = read_job_config()
-    iternum = job_config["num_iterations"]
+    iternum = 0
 
     if enableddp:
         # TODO(julieta) control whether we want to distribute the full model, or just a subset
