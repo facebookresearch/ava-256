@@ -20,29 +20,8 @@ import torch.nn as nn
 import numpy as np
 from care.data.io import typed
 
-# Sanity check on PATH ENV VARIABLES
-# if os.getenv('RSC_AVATAR_PYUTILS_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_PYUTILS_PATH NOT FOUND")
-
 if os.getenv('RSC_JOB_UUID', 'NOTFOUND') == 'NOTFOUND':
     assert(False, "RSC_JOB_UUID NOT FOUND")
-
-# if os.getenv('RSC_AVATAR_METADATA_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_AVATAR_METADATA_PATH NOT FOUND")
-
-# if os.getenv('RSC_AVATAR_RSCASSET_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_AVATAR_RSCASSET_PATH NOT FOUND")
-
-# if os.getenv('RSC_AVATAR_READONLY_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_READONLY_PATH NOT FOUND")
-
-# if os.getenv('RSC_AVATAR_DEBUGDATA_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_DEBUGDATA_PATH NOT FOUND")
-
-# if os.getenv('RSC_AVATAR_EVAL_CONFIG_PATH', 'NOTFOUND') == 'NOTFOUND':
-#     assert(False, "RSC_AVATAR_EVAL_CONFIG_PATH NOT FOUND")
-
-# apath=os.getenv('RSC_AVATAR_RSCASSET_PATH')
 
 
 # ablation esperiment hs its own holdout segment , camera control system, don't put anything on the following
