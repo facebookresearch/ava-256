@@ -30,17 +30,6 @@ holdoutcams = []
 holdoutseg = []
 ####################################
 
-# obsolete
-capturepath = "/mnt/captures/studies/projects/GHS/Mugsy/m--20190529--1300--002421669--pilot--v1v2/"
-
-gnewminisis_flag=True
-
-_train_start_frac = 0
-_train_end_frac = 1.0
-
-_test_start_frac = 0.1
-_test_end_frac = 1.0
-
 _additional_keyfilters=[]
 
 

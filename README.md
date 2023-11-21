@@ -16,3 +16,6 @@ TODO(julieta) bibtex here
 * Script to download/update dataset if you already have a copy
 * Metrics in pixel space
 * Train/val/test partitions
+* See if we can include Yaser (PRW754) in the release
+    * His last capture was Pilots in October 2022, which might be hard to port
+    * https://www.internalfb.com/manifold/explorer/codec-avatars-captures-prod-es/tree/captures/v2/pilots/mugsy/Mar19/m--20221006--1031--PRW754--pilot--CA2FullBody--Heads

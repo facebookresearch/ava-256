@@ -1,6 +1,7 @@
 """
-Random Access dataset that supports train/val/evaluation
+RSC dataloader. Need another one for reading from SSD/disk.
 """
+
 import os
 import sys
 import cv2
