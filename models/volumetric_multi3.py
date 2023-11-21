@@ -361,8 +361,7 @@ class Autoencoder(nn.Module):
             condinput.append(neckrotpred)
         if len(condinput) > 0:
             condinput = torch.cat(condinput, dim=-1)
-            decout, declosses = self.decoder(idindex,
-                                             verts,
+            decout, declosses = self.decoder(verts,
                                              id_cond,
                                              encoding, viewpos,
                                             #  condinput=condinput,
@@ -371,8 +370,7 @@ class Autoencoder(nn.Module):
                                              losslist=losslist)
         else:
             # id_cond_dummy = torch.randn((4, 1))
-            decout, declosses = self.decoder(idindex,
-                                             verts,
+            decout, declosses = self.decoder(verts,
                                              id_cond,
                                              encoding, viewpos,
                                             #  condinput=condinput,

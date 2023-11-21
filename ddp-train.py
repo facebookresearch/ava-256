@@ -267,7 +267,6 @@ if __name__ == "__main__":
     __spec__ = None # to use ipdb
 
     # parse arguments
-    logging.info(" TRAIN PROC : OS PID  {}".format(os.getpid()))
     parser = argparse.ArgumentParser(description='Train an autoencoder')
     parser.add_argument('experconfig', type=str, help='experiment config file')
     parser.add_argument('--profile', type=str, default="Train", help='config profile')
@@ -292,7 +291,7 @@ if __name__ == "__main__":
     parser.add_argument('--evalcheckpointpath', type=str, default=None, help='checkpoint file path for evaluating ablation experiments')
     parser.add_argument('--ids2use', type=int, default=-1,  help='the number of processes for distributed training')
     parser.add_argument('--idfilepath', type=str, default=None, help='file of id list for training or evaluation')
-    parser.add_argument('--evaldatapath', type=str, default=None, help='path evaluation data from PIT') # /checkpoint/avatar/jinkyuk/read-only/ablation-eval/bz2/[path]
+    parser.add_argument('--evaldatapath', type=str, default=None, help='path evaluation data from PIT') # /checkpoint/avatar/jinkyuk/read-only/ablation-eval/bz3/[path]
 
     # Logging options
     parser.add_argument('--displayprofstats', action='store_true', help='logging perf stats every iteartion. Will make training slower')
@@ -305,18 +304,15 @@ if __name__ == "__main__":
     # command line args have precedence over env vars, which have precedence over config file.
     # In this script, we are trying to move away from environment variables to make it easier to do sweeps with slurm,
     # but the launchers are still setting the env variables because other scripts (eg eval) may rely on them.
-    parser.add_argument('--dataset', type=str, default="MGR", help='dataset to train on, mugsy or mgr')
     parser.add_argument('--maxiter', type=int, default=10_000_000, help='maximum number of iterations')
     parser.add_argument('--batchsize', type=int, default=4, help='Batch size per GPU to use')
-    parser.add_argument('--learning-rate', type=float, default=1e-3, help='Learning rate passed as it to the optimizer')
+    parser.add_argument('--learning-rate', type=float, default=2e-4, help='Learning rate passed as it to the optimizer')
     parser.add_argument('--clip', type=float, default=1., help='Gradient clipping')
     parser.add_argument('--nids', type=int, default=1, help='Number of identities to select')
     parser.add_argument('--subsample-size', type=int, default=1134 // 4, help="Size of image after cropping -- or other subsampling method used")
     parser.add_argument('--downsample', type=int, default=4 , help="image downsampling factor at data loader -- default 4, DL return images with H=1024, W=667")
-    parser.add_argument("--disable_id_encoder", action='store_true', help="disable id_encoder in ae")
     parser.add_argument("--gradient_accumulation", type=int, default=1, help="steps to accumulate gradients before updating model weights")
-    parser.add_argument("--encoder_lr", type=float, default=None, help="learning rate for encoder ",)
-    parser.add_argument("--encoder_channel_mult", type=int, default=1, help="channel multiplier for the encoder ",)
+    parser.add_argument("--encoder_lr", type=float, default=None, help="learning rate for encoder ")
 
     parsed, unknown = parser.parse_known_args()
     for arg in unknown:
@@ -331,7 +327,10 @@ if __name__ == "__main__":
     args.worldsize = int(os.environ.get("SLURM_NTASKS", 1))
     args.rank = int(os.environ.get("SLURM_PROCID", 0))
 
-    outpath = os.environ.get('RSC_RUN_DIR', os.path.abspath(__file__)) # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
+    current_file = os.path.abspath(__file__)
+    current_dir = os.path.dirname(current_file)
+    outpath = os.environ.get('RSC_RUN_DIR', os.path.join(current_dir, "run")) # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
+    os.makedirs(outpath, exist_ok=True)
 
     tlogpath = "{}/log-r{}.txt".format(outpath, args.rank)
 
@@ -502,7 +501,7 @@ if __name__ == "__main__":
 
     # build autoencoder
     starttime = time.time()
-    ae = profile.get_autoencoder(dataset, args.disable_id_encoder, args.encoder_channel_mult)
+    ae = profile.get_autoencoder(dataset)
     ae = ae.to("cuda").train()
 
     iternum = 0
@@ -890,7 +889,8 @@ if __name__ == "__main__":
                 # to avoid any race conditions when multiple ranks are facing loss explosions
                 # we do not want to load aeparams.pt while rank 0 is still writing the file
                 dist.barrier()
-            base_dir = os.environ["RSC_EXP_RUN_BASE_DIR"]
+
+            base_dir = outpath
             if not base_dir:
                 raise AssertionError("cannot reset without providing base_dir, check env var RSC_EXP_RUN_BASE_DIR")
             logging.warning(f"unstable loss function; resetting -- resume from the latest checkpoint : {outpath}/aeparams.pt")

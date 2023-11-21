@@ -70,15 +70,15 @@ def create_uv_baridx(geofile, trifile, barfiles):
                                        bar2[None,:,:]), axis=0),
             'uv_coord': vt, 'uv_tri': vti, 'tri': vi }
 
-def get_autoencoder(dataset, disable_id_encoder=False, encoder_channel_mult=1):
+def get_autoencoder(dataset):
     import torch
     import torch.nn as nn
     #import models.volumetric_multi2 as aemodel
     import models.volumetric_multi3 as aemodel # clean one no profiling code
     import models.encoders.geotex1_multi as encoderlib
-    # import models.decoders.bm3_multi as decoderlib
+    import models.decoders.bm3_multi as decoderlib
     # import models.decoders.bm3_multi_small as decoderlib
-    import models.decoders.bm3_multi_x025 as decoderlib
+    # import models.decoders.bm3_multi_x025 as decoderlib
     import models.raymarchers.mvpraymarcher_new as raymarcherlib
     import models.colorcals.colorcal_multi as colorcalib
     import models.bg.mlp2d_multi as bglib
@@ -117,16 +117,16 @@ def get_autoencoder(dataset, disable_id_encoder=False, encoder_channel_mult=1):
         barfiles.append(f'{uvpath}/uv_bary{i}_{resolution}_orig.txt')
     uvdata = create_uv_baridx(geofile, trifile, barfiles)
 
-    id_encoder = encoderlib.EncoderIdentity2(uvdata['uv_idx'], uvdata['uv_bary'], wsize=128) if not disable_id_encoder else None
-    encoder = encoderlib.EncoderExpression(uvdata['uv_idx'], uvdata['uv_bary'], encoder_channel_mult)
+    id_encoder = encoderlib.EncoderIdentity2(uvdata['uv_idx'], uvdata['uv_bary'], wsize=128)
+    encoder = encoderlib.EncoderExpression(uvdata['uv_idx'], uvdata['uv_bary'])
     volradius = 256.
 
     # Create meta-decoder
-    decoder = decoderlib.Decoder5NoBias(
+    decoder = decoderlib.Decoder5(
         vt, vi, vti, vertmean, vertstd, volradius=volradius,
         nprims=128*128, primsize=(8,8,8), motiontype="deconv",
         # postrainstart=len(dataset.identities) * 100, warp=None, enable_id_encoder=not disable_id_encoder,
-        postrainstart=100, warp=None, enable_id_encoder=not disable_id_encoder,
+        postrainstart=100, warp=None,
         n_decoders=len(dataset.captures),
     )
 
@@ -172,7 +172,7 @@ def get_autoencoder(dataset, disable_id_encoder=False, encoder_channel_mult=1):
 
 # profiles
 class Train():
-    def get_autoencoder(self, dataset, disable_id_encoder=False, encoder_channel_mult=1): return get_autoencoder(dataset, disable_id_encoder, encoder_channel_mult)
+    def get_autoencoder(self, dataset): return get_autoencoder(dataset)
     def get_outputlist(self): return ["irgbrec", "irgbsqerr", "sampledimg"]
 
     def get_ae_args(self): return dict(renderoptions=get_renderoptions())
