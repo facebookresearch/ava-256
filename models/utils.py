@@ -9,136 +9,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def xaviermultiplier(m, gain):
-    if isinstance(m, nn.Conv1d):
-        ksize = m.kernel_size[0]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.ConvTranspose1d):
-        ksize = m.kernel_size[0] // m.stride[0]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.Conv2d):
-        ksize = m.kernel_size[0] * m.kernel_size[1]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.ConvTranspose2d):
-        ksize = m.kernel_size[0] * m.kernel_size[1] // m.stride[0] // m.stride[1]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.Conv3d):
-        ksize = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.ConvTranspose3d):
-        ksize = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] // m.stride[0] // m.stride[1] // m.stride[2]
-        n1 = m.in_channels
-        n2 = m.out_channels
-
-        std = gain * math.sqrt(2.0 / ((n1 + n2) * ksize))
-    elif isinstance(m, nn.Linear):
-        n1 = m.in_features
-        n2 = m.out_features
-
-        std = gain * math.sqrt(2.0 / (n1 + n2))
-    else:
-        return None
-
-    return std
-
-### progan initialization scheme, Sec 4.1 "Equalized Learning Rate"
-# (all weights init'd N(0,1), and weights multiplied during forward pass)
-class EqualizedLR(object):
-    def __init__(self, scale):
-        self.scale = scale
-
-    def compute_weight(self, module):
-        return getattr(module, "weight_") * self.scale
-
-    @staticmethod
-    def apply(module, gain=1.0):
-        for k, hook in module._forward_pre_hooks.items():
-            if isinstance(hook, EqualizedLR):
-                raise RuntimeError("Cannot register two EqualizedLR hooks")
-
-        weight = getattr(module, "weight")
-
-        scale = xaviermultiplier(module, gain)
-
-        fn = EqualizedLR(scale)
-
-        # remove w from parameter list
-        del module._parameters["weight"]
-
-        # initialize weight
-        weight.data.normal_()
-        # determine if this is a deconv, and make weight blockwise
-        if isinstance(module, nn.ConvTranspose2d):
-            # hardcoded for stride=2 for now
-            weight.data[:, :, 0::2, 1::2] = weight.data[:, :, 0::2, 0::2]
-            weight.data[:, :, 1::2, 0::2] = weight.data[:, :, 0::2, 0::2]
-            weight.data[:, :, 1::2, 1::2] = weight.data[:, :, 0::2, 0::2]
-
-        if isinstance(module, nn.ConvTranspose3d):
-            # hardcoded for stride=2 for now
-            weight.data[:, :, 0::2, 0::2, 1::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 0::2, 1::2, 0::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 0::2, 1::2, 1::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 1::2, 0::2, 0::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 1::2, 0::2, 1::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 1::2, 1::2, 0::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-            weight.data[:, :, 1::2, 1::2, 1::2] = weight.data[:, :, 0::2, 0::2, 0::2]
-
-        module.register_parameter("weight_", nn.Parameter(weight.data))
-        setattr(module, "weight", fn.compute_weight(module))
-
-        # recompute weight before every forward()
-        module.register_forward_pre_hook(fn)
-
-        return fn
-
-    def remove(self, module):
-        weight = self.compute_weight(module)
-        delattr(module, "weight")
-        del module._parameters["weight_"]
-        module.register_parameter("weight", Parameter(weight.data))
-
-    def __call__(self, module, inputs):
-        setattr(module, "weight", self.compute_weight(module))
-
-def eqlrmod(m):
-    EqualizedLR.apply(m)
-    return m
-
-def eqlrseq(s):
-    validclasses = [nn.Linear, nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d]
-
-    for a, b in zip(s[:-1], s[1:]):
-        if any([isinstance(a, x) for x in validclasses]):
-            if isinstance(b, nn.ReLU):
-                EqualizedLR.apply(a, nn.init.calculate_gain('relu'))
-            elif isinstance(b, nn.LeakyReLU):
-                EqualizedLR.apply(a, nn.init.calculate_gain('leaky_relu', b.negative_slope))
-            elif isinstance(b, nn.Sigmoid):
-                EqualizedLR.apply(a)
-            elif isinstance(b, nn.Softplus):
-                EqualizedLR.apply(a)
-            else:
-                EqualizedLR.apply(a)
-
-    if any([isinstance(s[-1], x) for x in validclasses]):
-        EqualizedLR.apply(s[-1])
-
 ### normal initialization routines
 def xavier_uniform_(m, gain):
     std = xaviermultiplier(m, gain)
@@ -253,7 +123,7 @@ class CoordConv2d(nn.Conv2d):
             stride=1, padding=0, dilation=1, groups=1, bias=True):
         super(CoordConv2d, self).__init__(in_channels + 2, out_channels, kernel_size, stride,
                  padding, dilation, groups, bias)
-        
+
     def forward(self, x):
         x = torch.cat([x,
             torch.linspace(-1., 1., x.size(2), device=x.device)[None, None, :, None].repeat(x.size(0), 1, 1, x.size(3)),
@@ -282,7 +152,7 @@ class Conv2dWS(nn.Conv2d):
         #shift = mean * scale
         #return self.weight * scale - shift
         return (self.weight - mean) * scale
-    
+
     def forward(self, x):
         weight = self.standardize_weights(1e-4)
         out = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
@@ -295,7 +165,7 @@ class Conv2dWN(nn.Conv2d):
         super(Conv2dWN, self).__init__(in_channels, out_channels, kernel_size, stride,
                  padding, dilation, groups, True)
         self.g = nn.Parameter(torch.ones(out_channels))
-        
+
     def forward(self, x):
         wnorm = torch.sqrt(torch.sum(self.weight ** 2))
         return F.conv2d(x, self.weight * self.g[:, None, None, None] / wnorm,
@@ -308,7 +178,7 @@ class Conv2dUB(nn.Conv2d):
         super(Conv2dUB, self).__init__(in_channels, out_channels, kernel_size, stride,
                  padding, dilation, groups, False)
         self.bias = nn.Parameter(torch.zeros(out_channels, height, width))
-        
+
     def forward(self, x):
         return F.conv2d(x, self.weight,
                 bias=None, stride=self.stride, padding=self.padding,
@@ -321,7 +191,7 @@ class Conv2dWNUB(nn.Conv2d):
                  padding, dilation, groups, False)
         self.g = nn.Parameter(torch.ones(out_channels))
         self.bias = nn.Parameter(torch.zeros(out_channels, height, width))
-        
+
     def forward(self, x):
         wnorm = torch.sqrt(torch.sum(self.weight ** 2))
         return F.conv2d(x, self.weight * self.g[:, None, None, None] / wnorm,
@@ -335,12 +205,12 @@ class ConvTranspose2dWN(nn.ConvTranspose2d):
                  padding, dilation, groups, True)
         self.g = nn.Parameter(torch.ones(out_channels))
         self.fused = False
-        
+
     def fuse(self):
         wnorm = torch.sqrt(torch.sum(self.weight ** 2))
-        self.weight.data = self.weight.data * self.g.data[None, :, None, None] / wnorm 
+        self.weight.data = self.weight.data * self.g.data[None, :, None, None] / wnorm
         self.fused = True
-        
+
     def forward(self, x):
         bias = self.bias
         assert bias is not None
@@ -378,9 +248,9 @@ class ConvTranspose2dWNUB(nn.ConvTranspose2d):
 
     def fuse(self):
         wnorm = torch.sqrt(torch.sum(self.weight ** 2))
-        self.weight.data = self.weight.data * self.g.data[None, :, None, None] / wnorm 
+        self.weight.data = self.weight.data * self.g.data[None, :, None, None] / wnorm
         self.fused = True
-        
+
     def forward(self, x):
         bias = self.bias
         assert bias is not None
@@ -400,7 +270,7 @@ class Conv3dUB(nn.Conv3d):
         super(Conv3dUB, self).__init__(in_channels, out_channels, kernel_size, stride,
                  padding, dilation, groups, False)
         self.bias = nn.Parameter(torch.zeros(out_channels, depth, height, width))
-        
+
     def forward(self, x):
         return F.conv3d(x, self.weight,
                 bias=None, stride=self.stride, padding=self.padding,
@@ -438,7 +308,7 @@ class ConvTranspose3dUB(nn.ConvTranspose3d):
         super(ConvTranspose3dUB, self).__init__(in_channels, out_channels, kernel_size, stride,
                  padding, dilation, groups, False)
         self.bias = nn.Parameter(torch.zeros(out_channels, depth, height, width))
-        
+
     def forward(self, x):
         return F.conv_transpose3d(x, self.weight,
                 bias=None, stride=self.stride, padding=self.padding,
@@ -636,7 +506,7 @@ class SHLightRotateDecorator(nn.Module):
             light0 = torch.stack([
                 torch.sum((light0 + 1e-3) * self.bases[i] * torch.sin(self.th[:, 0, None]) * np.pi ** 2 / light0.numel())
                 for i in range(self.bases.size(0))], dim=0)
-            
+
             light.append(light0)
         light = torch.stack(light, dim=0).to("cuda")
         light = light[:, :, None].repeat(1, 1, 3).view(light.size(0), -1)
@@ -684,7 +554,7 @@ class SHNearfieldLightDecorator(nn.Module):
         #    light0 = torch.stack([
         #        torch.sum((light0 + 1e-3) * self.bases[i] * torch.sin(self.th[:, 0, None]) * np.pi ** 2 / light0.numel())
         #        for i in range(self.bases.size(0))], dim=0)
-        #    
+        #
         #    light.append(light0)
         #light = torch.stack(light, dim=0).to("cuda")
         #light = light[:, :, None].repeat(1, 1, 3).view(light.size(0), -1)
