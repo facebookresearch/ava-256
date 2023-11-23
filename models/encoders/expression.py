@@ -17,7 +17,7 @@ class ExpressionEncoder(nn.Module):
     """Encoder for a person's expression (as opposed to identity)"""
 
     def __init__(self, uv_tidx: np.ndarray, uv_bary: np.ndarray, encoder_channel_mult: int = 1):
-        super(EncoderExpression, self).__init__()
+        super(ExpressionEncoder, self).__init__()
 
         self.register_buffer("uv_tidx", torch.from_numpy(uv_tidx).type(torch.LongTensor))
         self.register_buffer("uv_bary", torch.from_numpy(uv_bary).type(torch.FloatTensor))
@@ -57,8 +57,11 @@ class ExpressionEncoder(nn.Module):
         self.mu = c(64, 16, 1, 1, 0)
         self.logstd = c(64, 16, 1, 1, 0)
 
-        for mod in [self.tex, self.geo, self.comb, self.mu, self.logstd]:
-            models.utils.initseq(mod)
+        models.utils.initseq(self.tex)
+        models.utils.initseq(self.geo)
+        models.utils.initseq(self.comb)
+        models.utils.initmod(self.mu)
+        models.utils.initmod(self.logstd)
 
     def forward(
         self,

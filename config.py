@@ -18,7 +18,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from care.data.io import typed
+
+from utils import load_obj
 
 if os.getenv("RSC_JOB_UUID", "NOTFOUND") == "NOTFOUND":
     assert (False, "RSC_JOB_UUID NOT FOUND")
@@ -40,12 +41,8 @@ def get_renderoptions():
 def create_uv_baridx(geofile, trifile, barfiles):
     import cv2
 
-    dotobj = typed.load(geofile, extension="obj")
+    dotobj = load_obj(geofile, extension="obj")
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
-
-    vt = np.array(vt, dtype=np.float32)
-    vi = np.array(vi, dtype=np.int32)
-    vti = np.array(vti, dtype=np.int32)
 
     vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
     uvtri = np.genfromtxt(trifile, dtype=np.int32)
