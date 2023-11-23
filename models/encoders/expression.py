@@ -1,5 +1,7 @@
 """Expression encoder"""
 
+from typing import Dict, Set, Tuple
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -95,14 +97,3 @@ class ExpressionEncoder(nn.Module):
             z = mu
 
         return {"encoding": z}, losses
-
-
-if __name__ == "__main__":
-    # TODO(julieta) see if a loss of zero is impossible or what
-    def test_kl_loss():
-        n, d = 1, 128
-        loss = kl_loss_stable(torch.zeros(n, d), torch.ones(n, d))
-        print(loss)
-        assert loss == 0
-
-    test_kl_loss()

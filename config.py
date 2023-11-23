@@ -76,9 +76,9 @@ def get_autoencoder(dataset):
     import models.autoencoder as aemodel
     import models.bg.mlp2d_multi as bglib
     import models.colorcals.colorcal_multi as colorcalib
-    import models.decoders.bm3_multi as decoderlib
-    import models.encoder.expression as expression_encoder_lib
-    import models.encoder.identity as identity_encoder_lib
+    import models.decoders.assembler as decoderlib
+    import models.encoders.expression as expression_encoder_lib
+    import models.encoders.identity as identity_encoder_lib
     import models.raymarchers.mvpraymarcher_new as raymarcherlib
 
     allcameras = dataset.get_allcameras()
@@ -115,12 +115,12 @@ def get_autoencoder(dataset):
         barfiles.append(f"{uvpath}/uv_bary{i}_{resolution}_orig.txt")
     uvdata = create_uv_baridx(geofile, trifile, barfiles)
 
-    id_encoder = encoderlib.EncoderIdentity2(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
-    encoder = encoderlib.EncoderExpression(uvdata["uv_idx"], uvdata["uv_bary"])
+    id_encoder = identity_encoder_lib.IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
+    encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
     volradius = 256.0
 
     # Create meta-decoder
-    decoder = decoderlib.Decoder5(
+    decoder = decoderlib.Assembler(
         vt,
         vi,
         vti,
