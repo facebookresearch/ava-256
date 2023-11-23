@@ -1,3 +1,15 @@
 {
-    "editor.defaultFormatter": "ms-python.black-formatter"
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true,
+    },
+    "black-formatter.args": ["--line-length", "120"],
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+    },
+    "editor.rulers": [
+        120
+    ],
+    "python.analysis.typeCheckingMode": "basic"
 }

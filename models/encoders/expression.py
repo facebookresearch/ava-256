@@ -1,28 +1,24 @@
 """Expression encoder"""
 
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 
 import models.utils
 
 
 def kl_loss_stable(mu: torch.Tensor, logstd: torch.Tensor) -> float:
-    return torch.mean(-0.5 + torch.abs(logstd) + 0.5 * mu ** 2 + 0.5 * torch.exp(2*-1*torch.abs(logstd)), dim=-1)
+    return torch.mean(-0.5 + torch.abs(logstd) + 0.5 * mu**2 + 0.5 * torch.exp(2 * -1 * torch.abs(logstd)), dim=-1)
 
 
 class ExpressionEncoder(nn.Module):
     """Encoder for a person's expression (as opposed to identity)"""
 
-    def __init__(self,
-        uv_tidx: np.ndarray,
-        uv_bary: np.ndarray,
-        encoder_channel_mult:int=1
-    ):
+    def __init__(self, uv_tidx: np.ndarray, uv_bary: np.ndarray, encoder_channel_mult: int = 1):
         super(EncoderExpression, self).__init__()
 
-        self.register_buffer('uv_tidx', torch.from_numpy(uv_tidx).type(torch.LongTensor))
-        self.register_buffer('uv_bary', torch.from_numpy(uv_bary).type(torch.FloatTensor))
+        self.register_buffer("uv_tidx", torch.from_numpy(uv_tidx).type(torch.LongTensor))
+        self.register_buffer("uv_bary", torch.from_numpy(uv_bary).type(torch.FloatTensor))
         self.C = encoder_channel_mult
         C = self.C
 
@@ -30,6 +26,7 @@ class ExpressionEncoder(nn.Module):
         a = lambda: nn.LeakyReLU(0.2, inplace=True)
         s = nn.Sequential
 
+        # fmt: off
         # Texture pre-processor
         self.tex = s(c(    3,  16*C, 4, 2, 1), a(), # 1024, 512
                      c( 16*C,  32*C, 4, 2, 1), a(), # 512, 256
@@ -52,6 +49,7 @@ class ExpressionEncoder(nn.Module):
                       c(    128*C,   64*C, 3, 1, 1), a(), # no change in res
                       c(     64*C,     64, 4, 2, 1), a(), # 8, 4
                     )
+        # fmt: on
 
         # KL div parameter outputs
         self.mu = c(64, 16, 1, 1, 0)
@@ -59,7 +57,6 @@ class ExpressionEncoder(nn.Module):
 
         for mod in [self.tex, self.geo, self.comb, self.mu, self.logstd]:
             models.utils.initseq(mod)
-
 
     def forward(
         self,
@@ -89,7 +86,7 @@ class ExpressionEncoder(nn.Module):
 
         losses = dict()
         if "kldiv" in loss_set:
-            losses['kldiv'] = kl_loss_stable(mu, logstd)
+            losses["kldiv"] = kl_loss_stable(mu, logstd)
 
         if self.training:
             # Reparameterization trick for sampling during training
