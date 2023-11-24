@@ -73,3 +73,14 @@ def test_identity_encoder_size():
     # Create expression encoder
     identity_encoder = IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
     encoder_outs = identity_encoder(verts, avgtex)
+
+    assert encoder_outs["z_geo"].shape == torch.Size([1, 16, 4, 4])
+    assert encoder_outs["z_tex"].shape == torch.Size([1, 16, 4, 4])
+
+    # fmt: off
+    bias_channels = [256, 128, 128, 64,  64,  32,  16,    3]
+    bias_shapes =   [8,    16,  32, 64, 128, 256, 512, 1024]
+    for bias_geo, bias_tex, c, h in zip(encoder_outs["b_geo"], encoder_outs["b_tex"], bias_channels, bias_shapes):
+        assert bias_geo.shape == torch.Size([1, c, h, h])
+        assert bias_tex.shape == torch.Size([1, c, h, h])
+    # fmt: on

@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import torch
@@ -37,7 +37,9 @@ class IdentityEncoder(nn.Module):
         self.bias = nn.Parameter(torch.zeros(1, 2, wsize, wsize))
         self.bias.data.zero_()
 
-    def forward(self, neut_verts: torch.Tensor, neut_avgtex: torch.Tensor):
+    def forward(
+        self, neut_verts: torch.Tensor, neut_avgtex: torch.Tensor
+    ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         geo = generate_geomap(neut_verts, self.uv_tidx, self.uv_bary)
         z_geo, b_geo = self.geo(geo)
         z_tex, b_tex = self.tex(neut_avgtex)
@@ -54,7 +56,7 @@ class IdentityEncoder(nn.Module):
             b_geo[i] = torch.nn.functional.grid_sample(b_geo[i], W, align_corners=False)
             b_tex[i] = torch.nn.functional.grid_sample(b_tex[i], W, align_corners=False)
 
-        return {"z_geo": z_geo, "z_tex": z_tex, "b_geo": b_geo, "b_tex": b_tex}, None
+        return {"z_geo": z_geo, "z_tex": z_tex, "b_geo": b_geo, "b_tex": b_tex}
 
 
 class UnetEncoder(nn.Module):
