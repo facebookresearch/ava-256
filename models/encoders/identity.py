@@ -8,7 +8,7 @@ import models.utils
 from models.encoders.utils import generate_geomap
 
 
-class EncoderIdentity(nn.Module):
+class IdentityEncoder(nn.Module):
     """Encodes a person's identity"""
 
     def __init__(
@@ -17,7 +17,8 @@ class EncoderIdentity(nn.Module):
         uv_bary: Union[torch.Tensor, np.ndarray],
         wsize=128,
     ):
-        super(EncoderIdentity, self).__init__()
+        """TODO(julieta) document params"""
+        super(IdentityEncoder, self).__init__()
 
         # Convert to torch.tensor if the arrays come in np format
         uv_tidx = torch.from_numpy(uv_tidx) if type(uv_tidx) == np.ndarray else uv_tidx
@@ -25,8 +26,8 @@ class EncoderIdentity(nn.Module):
         self.register_buffer("uv_tidx", uv_tidx.type(torch.LongTensor))
         self.register_buffer("uv_bary", uv_bary.type(torch.FloatTensor))
 
-        self.tex = EncoderUNet()
-        self.geo = EncoderUNet()
+        self.tex = UnetEncoder()
+        self.geo = UnetEncoder()
         self.comb = GeoTexCombiner()
 
         self.wsize = wsize
@@ -56,11 +57,11 @@ class EncoderIdentity(nn.Module):
         return {"z_geo": z_geo, "z_tex": z_tex, "b_geo": b_geo, "b_tex": b_tex}, None
 
 
-class EncoderUNet(nn.Module):
+class UnetEncoder(nn.Module):
     """Encoder of a UNet that outputs a list of bias maps"""
 
     def __init__(self, imsize: int = 1024, channel_mult: int = 1, input_chan: int = 3):
-        super(EncoderUNet, self).__init__()
+        super(UnetEncoder, self).__init__()
 
         self.imsize = imsize
         l = models.utils.LinearWN

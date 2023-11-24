@@ -185,3 +185,31 @@ def make_closest_uv_barys(
         # pyre-fixme[7]: Expected `Tuple[LongTensor, FloatTensor,
         # Optional[FloatTensor]]]` but got `Tuple[Tensor, Tensor, NoneType]`.
         return index_img, bary_img, None
+
+
+def create_uv_baridx(geofile, trifile, barfiles):
+    import cv2
+
+    dotobj = load_obj(geofile)
+    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
+
+    vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
+    uvtri = np.genfromtxt(trifile, dtype=np.int32)
+    bar = []
+    for i in range(3):
+        bar.append(np.genfromtxt(barfiles[i], dtype=np.float32))
+
+    idx0 = cv2.flip(vi[uvtri, 0], flipCode=0)
+    idx1 = cv2.flip(vi[uvtri, 1], flipCode=0)
+    idx2 = cv2.flip(vi[uvtri, 2], flipCode=0)
+    bar0 = cv2.flip(bar[0], flipCode=0)
+    bar1 = cv2.flip(bar[1], flipCode=0)
+    bar2 = cv2.flip(bar[2], flipCode=0)
+
+    return {
+        "uv_idx": np.concatenate((idx0[None, :, :], idx1[None, :, :], idx2[None, :, :]), axis=0),
+        "uv_bary": np.concatenate((bar0[None, :, :], bar1[None, :, :], bar2[None, :, :]), axis=0),
+        "uv_coord": vt,
+        "uv_tri": vti,
+        "tri": vi,
+    }
