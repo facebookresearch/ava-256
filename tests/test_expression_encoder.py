@@ -65,7 +65,7 @@ def create_uv_baridx2(vt, vi, vti, uvtri, bar):
     }
 
 
-def test_sizes():
+def test_encoder_unet_sizes():
     """Smoke test confirming expected sizes for the encoder"""
     # TODO(julieta) make a centralized file with asset names so we don't have to type them out every time
     # TODO(julieta) have not been able to reproduce the bary_img

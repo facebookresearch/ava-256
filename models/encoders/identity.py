@@ -105,21 +105,22 @@ class EncoderUNet(nn.Module):
 
 
 class GeoTexCombiner(nn.Module):
-    def __init__(self, texsize=1024, geosize=1024, input_chan=3):
+    """Module that mixes information from both geometry and texture bias maps"""
+
+    def __init__(self, imsize: int = 1024, input_chan: int = 3):
         super(GeoTexCombiner, self).__init__()
 
-        self.texsize, self.geosize = texsize, geosize
-
-        if self.texsize == 1024:
+        self.imsize = imsize
+        if self.imsize == 1024:
+            # The number of channels of the input texture bias maps
             tsize = [input_chan, 16, 32, 64, 64, 128, 128, 256]
-        else:
-            raise ValueError(f"Unsupported texture image size: {self.texsize}")
-
-        if self.geosize == 1024:
             gsize = [input_chan, 16, 32, 64, 64, 128, 128, 256]
         else:
-            raise ValueError(f"Unsupported geometry image size: {self.geosize}")
+            raise ValueError(f"Unsupported image size: {self.imsize}")
 
+        self.layers = nn.ModuleDict()
+
+        # TODO(julieta) this is traversing the sizes backwards. Consider doing that beforehand
         n = len(gsize)
         for i in range(n):
             sg, st = gsize[-1 - i], tsize[-1 - i]
@@ -130,21 +131,21 @@ class GeoTexCombiner(nn.Module):
             g2t = nn.Sequential(models.utils.Conv2dWN(sg, st, 1, 1, 0), nn.LeakyReLU(0.2, inplace=True))
             t = nn.Sequential(models.utils.Conv2dWN(st * 2, st, 1, 1, 0), nn.LeakyReLU(0.2, inplace=True))
 
-            self.add_module(f"t2g{i}", t2g)
-            self.add_module(f"g2t{i}", g2t)
-            self.add_module(f"g{i}", g)
-            self.add_module(f"t{i}", t)
+            self.layers[f"t2g{i}"] = t2g
+            self.layers[f"g2t{i}"] = g2t
+            self.layers[f"g{i}"] = g
+            self.layers[f"t{i}"] = t
 
-            models.utils.initseq(self._modules[f"g{i}"])
-            models.utils.initseq(self._modules[f"t{i}"])
-            models.utils.initseq(self._modules[f"t2g{i}"])
-            models.utils.initseq(self._modules[f"g2t{i}"])
+            models.utils.initseq(self.layers[f"g{i}"])
+            models.utils.initseq(self.layers[f"t{i}"])
+            models.utils.initseq(self.layers[f"t2g{i}"])
+            models.utils.initseq(self.layers[f"g2t{i}"])
 
     def forward(self, b_geo_id: List[torch.Tensor], b_tex_id: List[torch.Tensor]):
         for i in range(len(b_geo_id)):
-            cg = torch.cat([b_geo_id[i], self._modules[f"t2g{i}"](b_tex_id[i])], dim=1)
-            ct = torch.cat([b_tex_id[i], self._modules[f"g2t{i}"](b_geo_id[i])], dim=1)
-            b_geo_id[i] = self._modules[f"g{i}"](cg)
-            b_tex_id[i] = self._modules[f"t{i}"](ct)
+            cg = torch.cat([b_geo_id[i], self.layers[f"t2g{i}"](b_tex_id[i])], dim=1)
+            ct = torch.cat([b_tex_id[i], self.layers[f"g2t{i}"](b_geo_id[i])], dim=1)
+            b_geo_id[i] = self.layers[f"g{i}"](cg)
+            b_tex_id[i] = self.layers[f"t{i}"](ct)
 
         return b_geo_id, b_tex_id
