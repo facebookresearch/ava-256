@@ -69,6 +69,8 @@ class EncoderUNet(nn.Module):
         s = nn.Sequential
         C = channel_mult
 
+        self.layers = nn.ModuleDict()
+
         if imsize == 1024:
             esize = [input_chan, 16 * C, 32 * C, 64 * C, 64 * C, 128 * C, 128 * C, 256 * C, 256 * C]
             bsize = [input_chan, 16, 32, 64, 64, 128, 128, 256, 256]
@@ -82,13 +84,13 @@ class EncoderUNet(nn.Module):
             e.append(a(0.2, inplace=True))
             if i > 0:
                 b.append(a(0.2, inplace=True))
-            self.add_module(f"e{i}", s(*e))
-            self.add_module(f"b{i}", s(*b))
+            self.layers[f"e{i}"] = s(*e)
+            self.layers[f"b{i}"] = s(*b)
         self.enc = c(esize[-1], 16, 1, 1, 0)
 
         for i in range(self.nlayers):
-            models.utils.initseq(self._modules[f"e{i}"])
-            models.utils.initseq(self._modules[f"b{i}"])
+            models.utils.initseq(self.layers[f"e{i}"])
+            models.utils.initseq(self.layers[f"b{i}"])
         models.utils.initmod(self.enc)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
@@ -96,9 +98,9 @@ class EncoderUNet(nn.Module):
         for i in range(self.nlayers):
             # skip first one since not used?
             # bi = None if i == 0 else self._modules[f'b{i}'](x)
-            bi = self._modules[f"b{i}"](x)
+            bi = self.layers[f"b{i}"](x)
             b.insert(0, bi)
-            x = self._modules[f"e{i}"](x)
+            x = self.layers[f"e{i}"](x)
         z = self.enc(x)
 
         return z, b
