@@ -43,18 +43,11 @@ def test_kl_loss():
     # assert loss == 0.``
 
 
-def create_uv_baridx2(geofile, uvtri, bar):
+def create_uv_baridx2(vt, vi, vti, uvtri, bar):
     """Julieta's port using the output of `make_closes_uv_barys` directly"""
     import cv2
 
-    dotobj = load_obj(geofile)
-    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
-
     vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
-    # uvtri = np.genfromtxt(trifile, dtype=np.int32)
-    # bar = []
-    # for i in range(3):
-    #     bar.append(np.genfromtxt(barfiles[i], dtype=np.float32))
 
     idx0 = cv2.flip(vi[uvtri, 0], flipCode=0)
     idx1 = cv2.flip(vi[uvtri, 1], flipCode=0)
@@ -110,10 +103,16 @@ def test_sizes():
     uvdata = create_uv_baridx("assets/face_topology.obj", trifile, barfiles)
 
     # Created locally, is not the same unfortunately :(
-    uvdata2 = create_uv_baridx2("assets/face_topology.obj", index_img.numpy(), bary_img.numpy())
+    uvdata2 = create_uv_baridx2(vt, vi, vti, index_img.numpy(), bary_img.numpy())
 
     # Create expression encoder
     expression_encoder = ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
+    expr_code, losses = expression_encoder(verts, avgtex, neut_verts, neut_avgtex, set(["kldiv"]))
+
+    assert expr_code["encoding"].shape == torch.Size([1, 16, 4, 4])
+
+    # Create expression encoder with data2
+    expression_encoder = ExpressionEncoder(uvdata2["uv_idx"], uvdata2["uv_bary"])
     expr_code, losses = expression_encoder(verts, avgtex, neut_verts, neut_avgtex, set(["kldiv"]))
 
     assert expr_code["encoding"].shape == torch.Size([1, 16, 4, 4])

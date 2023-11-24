@@ -10,7 +10,7 @@ import models.utils
 from models.encoders.utils import generate_geomap
 
 
-def kl_loss_stable(mu: torch.Tensor, logstd: torch.Tensor) -> float:
+def kl_loss_stable(mu: torch.Tensor, logstd: torch.Tensor) -> torch.Tensor:
     return torch.mean(-0.5 + torch.abs(logstd) + 0.5 * mu**2 + 0.5 * torch.exp(2 * -1 * torch.abs(logstd)), dim=-1)
 
 
@@ -36,9 +36,9 @@ class ExpressionEncoder(nn.Module):
         # Convert to torch.tensor if the arrays come in np format
         uv_tidx = torch.from_numpy(uv_tidx) if type(uv_tidx) == np.ndarray else uv_tidx
         uv_bary = torch.from_numpy(uv_bary) if type(uv_bary) == np.ndarray else uv_bary
-
         self.register_buffer("uv_tidx", uv_tidx.type(torch.LongTensor))
         self.register_buffer("uv_bary", uv_bary.type(torch.FloatTensor))
+
         self.C = encoder_channel_mult
         C = self.C
 

@@ -1,9 +1,8 @@
-from math import sqrt
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 import models.utils
 from models.encoders.utils import generate_geomap
@@ -12,11 +11,19 @@ from models.encoders.utils import generate_geomap
 class EncoderIdentity(nn.Module):
     """Encodes a person's identity"""
 
-    def __init__(self, uv_tidx: np.ndarray, uv_bary: np.ndarray, wsize=128):
+    def __init__(
+        self,
+        uv_tidx: Union[torch.Tensor, np.ndarray],
+        uv_bary: Union[torch.Tensor, np.ndarray],
+        wsize=128,
+    ):
         super(EncoderIdentity, self).__init__()
 
-        self.register_buffer("uv_tidx", torch.from_numpy(uv_tidx).type(torch.LongTensor))
-        self.register_buffer("uv_bary", torch.from_numpy(uv_bary).type(torch.FloatTensor))
+        # Convert to torch.tensor if the arrays come in np format
+        uv_tidx = torch.from_numpy(uv_tidx) if type(uv_tidx) == np.ndarray else uv_tidx
+        uv_bary = torch.from_numpy(uv_bary) if type(uv_bary) == np.ndarray else uv_bary
+        self.register_buffer("uv_tidx", uv_tidx.type(torch.LongTensor))
+        self.register_buffer("uv_bary", uv_bary.type(torch.FloatTensor))
 
         self.tex = EncoderUNet()
         self.geo = EncoderUNet()
@@ -29,7 +36,7 @@ class EncoderIdentity(nn.Module):
         self.bias = nn.Parameter(torch.zeros(1, 2, wsize, wsize))
         self.bias.data.zero_()
 
-    def forward(self, neut_verts, neut_avgtex, losslist=None):
+    def forward(self, neut_verts: torch.Tensor, neut_avgtex: torch.Tensor):
         geo = generate_geomap(neut_verts, self.uv_tidx, self.uv_bary)
         z_geo, b_geo = self.geo(geo)
         z_tex, b_tex = self.tex(neut_avgtex)
@@ -49,30 +56,29 @@ class EncoderIdentity(nn.Module):
         return {"z_geo": z_geo, "z_tex": z_tex, "b_geo": b_geo, "b_tex": b_tex}, None
 
 
-###############################################################################
 class EncoderUNet(nn.Module):
-    def __init__(self, ncond=1, imsize=1024, channel_mult=1, input_chan=3):
+    """Encoder of a UNet that outputs a list of bias maps"""
+
+    def __init__(self, imsize: int = 1024, channel_mult: int = 1, input_chan: int = 3):
         super(EncoderUNet, self).__init__()
 
-        self.ncond = ncond
         self.imsize = imsize
         l = models.utils.LinearWN
         c = models.utils.Conv2dWN
-        # a = CenteredLeakyReLU
         a = nn.LeakyReLU
         s = nn.Sequential
         C = channel_mult
 
         if imsize == 1024:
-            esize = [input_chan * ncond, 16 * C, 32 * C, 64 * C, 64 * C, 128 * C, 128 * C, 256 * C, 256 * C]
+            esize = [input_chan, 16 * C, 32 * C, 64 * C, 64 * C, 128 * C, 128 * C, 256 * C, 256 * C]
             bsize = [input_chan, 16, 32, 64, 64, 128, 128, 256, 256]
         else:
             print(f"Unsupported image size: {imsize}")
             quit()
         self.nlayers = len(esize) - 1
         for i in range(self.nlayers):
-            e = [c(esize[i], esize[i + 1], 4, 2, 1)]
-            b = [c(esize[i], bsize[i], 1, 1, 0)]
+            e: List[nn.Module] = [c(esize[i], esize[i + 1], 4, 2, 1)]
+            b: List[nn.Module] = [c(esize[i], bsize[i], 1, 1, 0)]
             e.append(a(0.2, inplace=True))
             if i > 0:
                 b.append(a(0.2, inplace=True))
@@ -85,11 +91,7 @@ class EncoderUNet(nn.Module):
             models.utils.initseq(self._modules[f"b{i}"])
         models.utils.initmod(self.enc)
 
-    def forward(self, x):
-        #############################
-        x_orig = x
-        #############################
-
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         n, b = x.shape[0], []
         for i in range(self.nlayers):
             # skip first one since not used?
@@ -99,36 +101,9 @@ class EncoderUNet(nn.Module):
             x = self._modules[f"e{i}"](x)
         z = self.enc(x)
 
-        #######################################################################################
-        if not np.isfinite(torch.sum(z).item()):
-            print("------------------- Non Finite Encoding --------------------------")
-            x = torch.sum(x_orig.contiguous().view(n, -1), dim=-1)
-            print(f"x: {x}")
-
-            z = torch.sum(z.contiguous().view(n, -1), dim=-1)
-            print(f"z: {z}")
-
-            for i in range(len(b)):
-                bi = torch.sum(b[i].contiguous().view(n, -1), dim=-1)
-                print(f"b{i}: {bi}")
-
-            for i in range(len(b)):
-                wi = torch.sum(self._modules[f"e{i}"][0].weight).item()
-                bi = torch.sum(self._modules[f"e{i}"][0].bias).item()
-                print(f"d{i}: {wi} {bi}")
-
-            for i in range(len(b)):
-                wi = torch.sum(self._modules[f"b{i}"][0].weight).item()
-                bi = torch.sum(self._modules[f"b{i}"][0].weight).item()
-                print(f"u{i}: {wi} {bi}")
-
-            quit()
-        #######################################################################################
-
         return z, b
 
 
-###############################################################################
 class GeoTexCombiner(nn.Module):
     def __init__(self, texsize=1024, geosize=1024, input_chan=3):
         super(GeoTexCombiner, self).__init__()
@@ -137,21 +112,13 @@ class GeoTexCombiner(nn.Module):
 
         if self.texsize == 1024:
             tsize = [input_chan, 16, 32, 64, 64, 128, 128, 256]
-        elif self.texsize == 512:
-            tsize = [input_chan, 16, 32, 64, 64, 128, 128]
-        elif self.texsize == 256:
-            tsize = [input_chan, 16, 32, 64, 64, 128]
-        elif self.texsize == 128:
-            tsize = [input_chan, 16, 32, 64, 64]
+        else:
+            raise ValueError(f"Unsupported texture image size: {self.texsize}")
 
         if self.geosize == 1024:
             gsize = [input_chan, 16, 32, 64, 64, 128, 128, 256]
-        elif self.geosize == 512:
-            gsize = [input_chan, 16, 32, 64, 64, 128, 128]
-        elif self.geosize == 256:
-            gsize = [input_chan, 16, 32, 64, 64, 128]
-        elif self.geosize == 128:
-            gsize = [input_chan, 16, 32, 64, 64]
+        else:
+            raise ValueError(f"Unsupported geometry image size: {self.geosize}")
 
         n = len(gsize)
         for i in range(n):
@@ -173,7 +140,7 @@ class GeoTexCombiner(nn.Module):
             models.utils.initseq(self._modules[f"t2g{i}"])
             models.utils.initseq(self._modules[f"g2t{i}"])
 
-    def forward(self, b_geo_id, b_tex_id):
+    def forward(self, b_geo_id: List[torch.Tensor], b_tex_id: List[torch.Tensor]):
         for i in range(len(b_geo_id)):
             cg = torch.cat([b_geo_id[i], self._modules[f"t2g{i}"](b_tex_id[i])], dim=1)
             ct = torch.cat([b_tex_id[i], self._modules[f"g2t{i}"](b_geo_id[i])], dim=1)
