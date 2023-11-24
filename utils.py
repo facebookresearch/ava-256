@@ -187,13 +187,14 @@ def make_closest_uv_barys(
         return index_img, bary_img, None
 
 
-def create_uv_baridx(geofile, trifile, barfiles):
+def create_uv_baridx(geofile: str, trifile: str, barfiles: List[str]):
     import cv2
 
     dotobj = load_obj(geofile)
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
     vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
+
     uvtri = np.genfromtxt(trifile, dtype=np.int32)
     bar = []
     for i in range(3):

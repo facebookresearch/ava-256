@@ -55,7 +55,7 @@ def test_combiner_sizes(unet_encoder, img):
     # fmt: on
 
 
-def test_identity_encoder_size():
+def test_identity_encoder_sizes():
     """Check the identity encoder produces the right sizes"""
 
     # Load real verts and an average texture

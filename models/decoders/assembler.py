@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import models.utils
+from models.decoders.rgb import RGBDecoder
 
 
 class Assembler(nn.Module):
@@ -44,7 +45,7 @@ class Assembler(nn.Module):
 
         # payload decoder
         imsize = int(sqrt(nprims)) * primsize[1]
-        self.rgbdec = DecoderSlab(
+        self.rgbdec = RGBDecoder(
             imsize, nprims, primsize[0], 3, viewcond=True, texwarp=False, disable_id_encoder=disable_id_encoder
         )
         self.geodec = DecoderGeoSlab2(

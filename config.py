@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from utils import load_obj
+from utils import create_uv_baridx, load_obj
 
 if os.getenv("RSC_JOB_UUID", "NOTFOUND") == "NOTFOUND":
     assert (False, "RSC_JOB_UUID NOT FOUND")
@@ -36,34 +36,6 @@ _additional_keyfilters = []
 
 def get_renderoptions():
     return dict(dt=1.0)
-
-
-def create_uv_baridx(geofile, trifile, barfiles):
-    import cv2
-
-    dotobj = load_obj(geofile, extension="obj")
-    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
-
-    vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
-    uvtri = np.genfromtxt(trifile, dtype=np.int32)
-    bar = []
-    for i in range(3):
-        bar.append(np.genfromtxt(barfiles[i], dtype=np.float32))
-
-    idx0 = cv2.flip(vi[uvtri, 0], flipCode=0)
-    idx1 = cv2.flip(vi[uvtri, 1], flipCode=0)
-    idx2 = cv2.flip(vi[uvtri, 2], flipCode=0)
-    bar0 = cv2.flip(bar[0], flipCode=0)
-    bar1 = cv2.flip(bar[1], flipCode=0)
-    bar2 = cv2.flip(bar[2], flipCode=0)
-
-    return {
-        "uv_idx": np.concatenate((idx0[None, :, :], idx1[None, :, :], idx2[None, :, :]), axis=0),
-        "uv_bary": np.concatenate((bar0[None, :, :], bar1[None, :, :], bar2[None, :, :]), axis=0),
-        "uv_coord": vt,
-        "uv_tri": vti,
-        "tri": vi,
-    }
 
 
 def get_autoencoder(dataset):
@@ -89,8 +61,7 @@ def get_autoencoder(dataset):
     apath = "/checkpoint/avatar/jinkyuk/rsc-assets"
     objpath = f"{apath}/geotextop.obj"
 
-    # objpath = "/home/julietamartinez/rsc/CARE/care/assets/topologies/vae_v1/face_topo.obj"
-    dotobj = typed.load(objpath, extension="obj")
+    dotobj = load_obj(objpath)
     v, vt, vi, vti = dotobj["v"], dotobj["vt"], dotobj["vi"], dotobj["vti"]
     vt = np.array(vt, dtype=np.float32)
     vi = np.array(vi, dtype=np.int32)
@@ -105,11 +76,8 @@ def get_autoencoder(dataset):
     resolution = 1024
     geofile = f"{apath}/retop.obj"
     uvpath = f"{apath}/fd-data/"
-
     trifile = f"{uvpath}/uv_tri_{resolution}_orig.txt"
-    barfiles = []
-    for i in range(3):
-        barfiles.append(f"{uvpath}/uv_bary{i}_{resolution}_orig.txt")
+    barfiles = [f"{uvpath}/uv_bary{i}_{resolution}_orig.txt" for i in range(3)]
     uvdata = create_uv_baridx(geofile, trifile, barfiles)
 
     id_encoder = identity_encoder_lib.IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
