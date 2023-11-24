@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import models.utils
+from models.encoders.utils import generate_geomap
 
 
 class EncoderIdentity(nn.Module):
