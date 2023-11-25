@@ -114,19 +114,29 @@ class RGBDecoder(nn.Module):
                 if n == xx.shape[1]:
                     x = (xx + id_biases[i]) * scale
                 else:
-                    x = xx  # note: last layer (1024x1024) ignores the pass through since slab is larger than 3 channels
+                    # NOTE(julieta): last layer (1024 x 1024) is pass through since slab is 24 channels vs 3 in bias
+                    x = xx
             else:
                 x = xx
 
         tex = x + self.bias[None, :, :, :]
 
+        # NOTE(julieta) At this point, the texture is [N, 24, 1024, 1024]
         x = tex
+
         h = int(np.sqrt(self.nboxes))
         w = int(h)
 
-        # TODO(julieta) document this transform, rewrite with einops
+        # TODO(julieta) rewrite with einops
+
+        #                              The indices are -----> 0, 1, 2,   3, 4,   5, 6
+        # NOTE(julieta) after this operation, the texture is [N, 8, 3, 128, 8, 128, 8]
         x = x.view(x.size(0), self.boxsize, self.outch, h, self.boxsize, w, self.boxsize)
+
+        # NOTE(julieta) after this operation, the texture is [N,  128, 128, 3, 8, 8, 8]
         x = x.permute(0, 3, 5, 2, 1, 4, 6)
+
+        # NOTE(julieta) after this operation, the texture is [N, 128 * 128, 3, 8, 8, 8]
         x = x.reshape(x.size(0), self.nboxes, self.outch, self.boxsize, self.boxsize, self.boxsize)
 
         return x
