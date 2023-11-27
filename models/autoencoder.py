@@ -15,16 +15,6 @@ from PIL import Image
 import models.utils
 from extensions.computeraydirs.computeraydirs import compute_raydirs
 
-# FLAGS to profile times
-AETIME = "aetime"  # total autoencoder time
-IDENCTIME = "idenctime"  # id encoding time
-ENCTIME = "enctime"  # expression encoding time
-DECTIME = "dectime"  # decoding time
-RAYMARCHINGTIME = "rmtime"  # ray marching time
-VERTLOSSTIME = "vertlosstime"  # geometry loss time
-RGBLOSSTIME = "rgblosstime"  # image loss time
-COLORCALANDBGTIME = "colorcalandbg"  # color calibration and background model
-
 
 def color_normalize(src, dst):
     b, h, w = src.shape[0], src.shape[-2], src.shape[-1]
@@ -32,8 +22,8 @@ def color_normalize(src, dst):
     B = dst.view(-1, 3, w * h)
 
     # mean normalize
-    Amean = torch.mean(A, dim=-1, keepdims=True)
-    Bmean = torch.mean(B, dim=-1, keepdims=True)
+    Amean = torch.mean(A, dim=-1, keepdim=True)
+    Bmean = torch.mean(B, dim=-1, keepdim=True)
     A = A - Amean
     B = B - Bmean
     # AAt = torch.bmm(A, A.permute(0,2,1))
@@ -55,18 +45,16 @@ class Autoencoder(nn.Module):
     def __init__(
         self,
         dataset: torch.data.Dataset,
-        id_encoder: torch.nn.Module,
-        encoder: torch.nn.Module,
-        decoder: torch.nn.Module,
-        raymarcher: torch.nn.Module,
-        colorcal: torch.nn.Module,
-        bgmodel: torch.nn.Module,
+        id_encoder: nn.Module,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        raymarcher: nn.Module,
+        colorcal: nn.Module,
+        bgmodel: nn.Module,
         encoderinputs,
         topology=None,
         imagemean=0.0,
         imagestd=1.0,
-        use_vgg=False,
-        use_id_latents=False,
     ):
         super(Autoencoder, self).__init__()
 
@@ -77,7 +65,6 @@ class Autoencoder(nn.Module):
         self.colorcal = colorcal
         self.bgmodel = bgmodel
         self.encoderinputs = encoderinputs
-        self.use_id_latents = use_id_latents  # whether to have trainable latents
 
         # renderlayer
         if topology is not None:
@@ -99,30 +86,6 @@ class Autoencoder(nn.Module):
         self.texstd = dataset.texstd
         self.imagemean = imagemean
         self.imagestd = imagestd
-
-        if use_vgg:
-            self.net_vgg = VGGLossMasked2()
-            # print('VGG Not supported yet!')
-            # quit()
-        else:
-            self.net_vgg = None
-
-        # Create backpropagable latent texture for the id encoder
-        if self.use_id_latents:
-            # List of `MugsyCapture`s
-            self.captures = dataset.identities
-
-            neut_avgtex = dict()
-            for capture, dataset in dataset.single_capture_datasets.items():
-                neut_avgtex[str(capture)] = nn.Parameter(torch.Tensor(dataset.neut_avgtex.copy()))
-            self.neut_avgtex = nn.ParameterDict(neut_avgtex)
-
-    def id_encode(self, neut_verts, neut_avgtex, **kwargs):
-        if (neut_verts is None) or (neut_avgtex is None):
-            print(f"Empty identity conditioning data")
-            quit()
-        id_cond = self.id_encoder(neut_verts, neut_avgtex)[0]  # {z_tex_id, b_tex_id, z_geo_id, b_geo_id}
-        return id_cond
 
     # @profile
     def forward(
@@ -209,28 +172,8 @@ class Autoencoder(nn.Module):
 
         """
 
-        if self.use_id_latents:
-            N, C, H, W = neut_avgtex.shape
-
-            # Collect all the latents and convert to tensor, should backprop to it
-            neut_avgtex = []
-            for capture_id in idindex:
-                capture = self.captures[capture_id]
-                normed = (self.neut_avgtex[str(capture)] - self.texmean) / self.texstd
-                neut_avgtex.append(normed)
-
-            neut_avgtex = torch.stack(neut_avgtex)
-
         resultout = {}
         resultlosses = {}
-
-        if AETIME in outputlist:
-            torch.cuda.synchronize()
-            aestart = time.time()
-
-        if IDENCTIME in outputlist:
-            torch.cuda.synchronize()
-            idencstart = time.time()
 
         # get identity conditioning
         if (neut_verts is None) or (neut_avgtex is None):
@@ -300,14 +243,6 @@ class Autoencoder(nn.Module):
         if "id_cond" in outputlist:
             resultout["id_cond"] = id_cond
 
-        if IDENCTIME in outputlist:
-            torch.cuda.synchronize()
-            resultout[IDENCTIME] = time.time() - idencstart
-
-        if ENCTIME in outputlist:
-            torch.cuda.synchronize()
-            encstart = time.time()
-
         # 0. encode/get encoding
         gazepred, neckrotpred = None, None
         if encoding is None:
@@ -340,16 +275,6 @@ class Autoencoder(nn.Module):
             if "neckrot" in encout:
                 neckrotpred = encout["neckrot"]
                 resultout["neckrotpred"] = neckrotpred
-
-        if ENCTIME in outputlist:
-            torch.cuda.synchronize()
-            encend = time.time()
-            resultout[ENCTIME] = encend - encstart
-
-        # 1. decode vol/mesh
-        if DECTIME in outputlist:
-            torch.cuda.synchronize()
-            decstart = time.time()
 
         # compute relative viewing position
         viewrot = torch.bmm(camrot, modelmatrix[:, :3, :3])
@@ -387,15 +312,6 @@ class Autoencoder(nn.Module):
             )
 
         resultlosses.update(declosses)
-
-        if DECTIME in outputlist:
-            torch.cuda.synchronize()
-            decend = time.time()
-            resultout[DECTIME] = decend - decstart
-
-        if VERTLOSSTIME in outputlist:
-            torch.cuda.synchronize()
-            vertlossstart = time.time()
 
         # compute vert loss
         if "vertmse" in losslist:
@@ -436,6 +352,7 @@ class Autoencoder(nn.Module):
             if "verts_pred" not in decout:
                 print(f"verts_pred decoder output required for vertl1_mod loss")
                 quit()
+
             weight = validinput[:, None, None].expand_as(decout["verts_gt"]) * decout["verts_mask"]
             vertsqerr = weight * torch.abs(decout["verts_gt"] - decout["verts_pred"])
             vertmse = torch.sum(vertsqerr.view(vertsqerr.size(0), -1), dim=-1)
@@ -464,17 +381,6 @@ class Autoencoder(nn.Module):
         if "samplecoords" in outputlist:
             resultout["samplecoords"] = samplecoords
 
-        # NOTE(julieta) I know... we are including the time to compute sample coords inside vertlosstime
-        # I do not want to create another timer, but I want to account for every line
-        if VERTLOSSTIME in outputlist:
-            torch.cuda.synchronize()
-            resultout[VERTLOSSTIME] = time.time() - vertlossstart
-
-        # 2. raymarch
-        if RAYMARCHINGTIME in outputlist:
-            torch.cuda.synchronize()
-            rmstart = time.time()
-
         # compute rays TODO: encapsulate?
         # NHWC
         raydir = (pixelcoords - princpt[:, None, None, :]) / focal[:, None, None, :]
@@ -497,15 +403,6 @@ class Autoencoder(nn.Module):
         )
         if "pos_img" in outputlist:
             resultout["pos_img"] = pos_img
-
-        if RAYMARCHINGTIME in outputlist:
-            torch.cuda.synchronize()
-            rmend = time.time()
-            resultout[RAYMARCHINGTIME] = rmend - rmstart
-
-        if COLORCALANDBGTIME in outputlist:
-            torch.cuda.synchronize()
-            colorcalandbgstart = time.time()
 
         # Subsample image
         chair = None
@@ -573,14 +470,6 @@ class Autoencoder(nn.Module):
         if "ialpha" in outputlist:
             resultout["ialpha"] = rayalpha
 
-        if COLORCALANDBGTIME in outputlist:
-            torch.cuda.synchronize()
-            resultout[COLORCALANDBGTIME] = time.time() - colorcalandbgstart
-
-        if RGBLOSSTIME in outputlist:
-            torch.cuda.synchronize()
-            rgblossstart = time.time()
-
         # irgb loss
         if image is not None:
             if "sampledimg" in outputlist:
@@ -620,8 +509,6 @@ class Autoencoder(nn.Module):
                 irgbl1_weight = torch.sum(weight.view(weight.size(0), -1), dim=-1)
                 resultlosses["irgbl1"] = (irgbl1, irgbl1_weight.clamp(min=1e-6))
 
-            # TODO(julieta) support VGG loss?
-
             if "ialphal1" in losslist:
                 if segmentation is None:
                     print("Asked for alphal1 loss but no segmentation found")
@@ -656,13 +543,5 @@ class Autoencoder(nn.Module):
                 ialphal1 = torch.sum(ialphaabs.view(ialphaabs.size(0), -1), dim=-1)
                 ialphal1_weight = torch.sum(chair.view(chair.size(0), -1), dim=-1)
                 resultlosses["ialphabce"] = (ialphal1, ialphal1_weight.clamp(min=1e-6))
-
-        if RGBLOSSTIME in outputlist:
-            torch.cuda.synchronize()
-            resultout[RGBLOSSTIME] = time.time() - rgblossstart
-
-        if "aetime" in outputlist:
-            torch.cuda.synchronize()
-            resultout["aetime"] = time.time() - aestart
 
         return resultout, resultlosses

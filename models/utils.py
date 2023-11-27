@@ -465,6 +465,8 @@ class ConvTranspose2dWNUB(nn.ConvTranspose2d):
 
 
 class Rodrigues(nn.Module):
+    """Convert from Rodrigues representation to rotation matrix."""
+
     def __init__(self):
         super(Rodrigues, self).__init__()
 
