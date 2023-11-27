@@ -1,6 +1,6 @@
 # Universal Decoders
 
-You can use this code together with the
+You can use this code together with the [encoder release](TODO-link) to create universal encoders and decoders.
 
 
 This code was written by Julieta Martinez, Jason Saraghi, Javier Romero, and ???

@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import models.utils
+from models.decoders.geometry import GeometryDecoder
 from models.decoders.rgb import RGBDecoder
 
 
@@ -26,12 +27,8 @@ class Assembler(nn.Module):
         primsize=(8, 8, 8),
         alphafade=False,
         postrainstart=0,
-        condsize=0,
-        motiontype="deconv",
-        warp=None,  # sharedrgba=False, geown=False,
-        **kwargs,
     ):
-        super(Decoder5, self).__init__()
+        super(Assembler, self).__init__()
 
         self.volradius = volradius
         self.alphafade = alphafade
@@ -39,36 +36,25 @@ class Assembler(nn.Module):
 
         self.nprims = nprims
         self.primsize = primsize
-        self.motiontype = motiontype
 
         self.rodrig = models.utils.Rodrigues()
 
         # payload decoder
         imsize = int(sqrt(nprims)) * primsize[1]
-        self.rgbdec = RGBDecoder(
-            imsize, nprims, primsize[0], 3, viewcond=True, texwarp=False, disable_id_encoder=disable_id_encoder
-        )
-        self.geodec = DecoderGeoSlab2(
+        self.rgbdec = RGBDecoder(imsize=imsize, nboxes=nprims, boxsize=primsize[0], outch=3, viewcond=True)
+        self.geodec = GeometryDecoder(
             vt,
             vi,
             vti,
-            vertmean.shape[-2],
-            {256: 16, 16384: 128}[nprims],
-            256,
-            imsize,
-            nprims,
-            primsize[0],
+            nvtx=vertmean.shape[-2],
+            motion_size={256: 16, 16384: 128}[nprims],
+            geo_size=256,
+            imsize=imsize,
+            nboxes=nprims,
+            boxsize=primsize[0],
         )
 
-        if warp is not None:
-            self.warpdec = get_dec("simplewarpdeconv", nprims=nprims, primsize=primsize, inch=256, outch=3, **kwargs)
-        else:
-            self.warpdec = None
-
-        #######################################################################################
-
         self.register_buffer("vt", torch.tensor(vt), persistent=False)
-
         self.register_buffer("vertmean", vertmean, persistent=False)
         self.vertstd = vertstd
 
@@ -394,21 +380,6 @@ class Assembler(nn.Module):
         # primalpha = F.relu(self.alphadec(encoding, trainiter=trainiter))
         # template = torch.cat([primrgb, primalpha], dim=2)
 
-        if self.warpdec is not None:
-            warp = (
-                self.warpdec(encoding, trainiter=trainiter) * 0.01
-                + torch.stack(
-                    torch.meshgrid(
-                        torch.linspace(-1.0, 1.0, self.primsize[0], device=encoding.device),
-                        torch.linspace(-1.0, 1.0, self.primsize[0], device=encoding.device),
-                        torch.linspace(-1.0, 1.0, self.primsize[0], device=encoding.device),
-                    )[::-1],
-                    dim=0,
-                )[None, None, :, :, :, :]
-            )
-        else:
-            warp = None
-
         if self.alphafade:
             gridz, gridy, gridx = torch.meshgrid(
                 torch.linspace(-1.0, 1.0, self.primsize, device=encoding.device),
@@ -551,7 +522,6 @@ class Assembler(nn.Module):
         return {
             "verts": geo,
             "template": template,
-            "warp": warp,
             "primpos": primpos,
             "primrot": primrot,
             "primscale": primscale,

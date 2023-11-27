@@ -122,7 +122,7 @@ class RGBDecoder(nn.Module):
         tex = x + self.bias[None, :, :, :]
 
         # NOTE(julieta) At this point, the texture is [N, 24, 1024, 1024]
-        x = tex
+        rgb = tex
 
         h = int(np.sqrt(self.nboxes))
         w = int(h)
@@ -131,12 +131,12 @@ class RGBDecoder(nn.Module):
 
         #                              The indices are -----> 0, 1, 2,   3, 4,   5, 6
         # NOTE(julieta) after this operation, the texture is [N, 8, 3, 128, 8, 128, 8]
-        x = x.view(x.size(0), self.boxsize, self.outch, h, self.boxsize, w, self.boxsize)
+        rgb = rgb.view(rgb.size(0), self.boxsize, self.outch, h, self.boxsize, w, self.boxsize)
 
         # NOTE(julieta) after this operation, the texture is [N,  128, 128, 3, 8, 8, 8]
-        x = x.permute(0, 3, 5, 2, 1, 4, 6)
+        rgb = rgb.permute(0, 3, 5, 2, 1, 4, 6)
 
         # NOTE(julieta) after this operation, the texture is [N, 128 * 128, 3, 8, 8, 8]
-        x = x.reshape(x.size(0), self.nboxes, self.outch, self.boxsize, self.boxsize, self.boxsize)
+        rgb = rgb.reshape(rgb.size(0), self.nboxes, self.outch, self.boxsize, self.boxsize, self.boxsize)
 
-        return x
+        return rgb
