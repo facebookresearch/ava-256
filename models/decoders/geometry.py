@@ -15,13 +15,16 @@ class GeometryDecoder(nn.Module):
         tri: np.ndarray,
         uvtri: np.ndarray,
         *,
-        nvtx,
-        motion_size,
-        geo_size,
-        imsize,
-        nboxes,
-        boxsize,
+        nvtx: int,
+        motion_size: int,
+        geo_size: int,
+        imsize: int,
+        nboxes: int,
+        boxsize: int,
     ):
+        """
+        TODO(julieta) document params
+        """
         super(GeometryDecoder, self).__init__()
 
         assert motion_size < imsize
@@ -141,7 +144,7 @@ class GeometryDecoder(nn.Module):
                 elif n * 2 == xx.shape[1]:
                     x = (xx + id_bias[i]) * scale
                 else:
-                    x = xx  # note: last layer (1024x1024) ignores the pass through since slab is larger than 3 channels
+                    x = xx  # note: last layer (1024 x 1024) ignores the pass through since slab is larger than 3 channels
             else:
                 x = xx
 

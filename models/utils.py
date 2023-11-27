@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def xaviermultiplier(m, gain):
+def xaviermultiplier(m: nn.Module, gain: float):
     if isinstance(m, nn.Conv1d):
         ksize = m.kernel_size[0]
         n1 = m.in_channels
@@ -52,13 +52,13 @@ def xaviermultiplier(m, gain):
 
         std = gain * math.sqrt(2.0 / (n1 + n2))
     else:
-        return None
+        raise ValueError("Unsupported layer: {m.type}")
 
     return std
 
 
 ### normal initialization routines
-def xavier_uniform_(m, gain):
+def xavier_uniform_(m: nn.Module, gain: float):
     std = xaviermultiplier(m, gain)
     m.weight.data.uniform_(-std * math.sqrt(3.0), std * math.sqrt(3.0))
 
@@ -462,125 +462,6 @@ class ConvTranspose2dWNUB(nn.ConvTranspose2d):
                 )
                 + bias[None, ...]
             )
-
-
-class Conv3dUB(nn.Conv3d):
-    def __init__(
-        self,
-        width,
-        height,
-        depth,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        dilation=1,
-        groups=1,
-        bias=True,
-    ):
-        super(Conv3dUB, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, False)
-        self.bias = nn.Parameter(torch.zeros(out_channels, depth, height, width))
-
-    def forward(self, x):
-        return (
-            F.conv3d(
-                x,
-                self.weight,
-                bias=None,
-                stride=self.stride,
-                padding=self.padding,
-                dilation=self.dilation,
-                groups=self.groups,
-            )
-            + self.bias[None, ...]
-        )
-
-
-class ConvTranspose3dWS(nn.ConvTranspose3d):
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        output_padding=0,
-        dilation=1,
-        groups=1,
-        bias=True,
-    ):
-        super(ConvTranspose3dWS, self).__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=stride,
-            padding=padding,
-            output_padding=output_padding,
-            dilation=dilation,
-            groups=groups,
-            bias=bias,
-        )
-        nn.init.kaiming_normal_(self.weight)
-        self.gain = nn.Parameter(torch.ones(self.weight.size(0), requires_grad=True))
-
-    def standardize_weights(self, eps):
-        mean = torch.mean(self.weight, dim=(1, 2, 3, 4), keepdims=True)
-        var = torch.var(self.weight, dim=(1, 2, 3, 4), keepdims=True)
-        fan_in = torch.prod(torch.tensor(self.weight.shape[1:]))
-
-        scale = (
-            1.414
-            * 2.0
-            * torch.rsqrt(torch.max(var * fan_in, torch.tensor(eps).to(var.device)))
-            * self.gain.view_as(var).to(var.device)
-        )
-        # shift = mean * scale
-        # return self.weight * scale - shift
-        return (self.weight - mean) * scale
-
-    def forward(self, x):
-        weight = self.standardize_weights(1e-4)
-        out = F.conv_transpose3d(
-            x, weight, self.bias, self.stride, self.padding, self.output_padding, self.groups, self.dilation
-        )
-        # print("@", out.mean().item(), out.std().item())
-        return out
-
-
-class ConvTranspose3dUB(nn.ConvTranspose3d):
-    def __init__(
-        self,
-        width,
-        height,
-        depth,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        dilation=1,
-        groups=1,
-        bias=True,
-    ):
-        super(ConvTranspose3dUB, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, groups, False
-        )
-        self.bias = nn.Parameter(torch.zeros(out_channels, depth, height, width))
-
-    def forward(self, x):
-        return (
-            F.conv_transpose3d(
-                x,
-                self.weight,
-                bias=None,
-                stride=self.stride,
-                padding=self.padding,
-                dilation=self.dilation,
-                groups=self.groups,
-            )
-            + self.bias[None, ...]
-        )
 
 
 class Rodrigues(nn.Module):

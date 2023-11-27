@@ -85,7 +85,7 @@ def get_autoencoder(dataset):
     volradius = 256.0
 
     # Create meta-decoder
-    decoder = decoderlib.Assembler(
+    decoder = decoderlib.DecoderAssembler(
         vt,
         vi,
         vti,
@@ -94,11 +94,7 @@ def get_autoencoder(dataset):
         volradius=volradius,
         nprims=128 * 128,
         primsize=(8, 8, 8),
-        motiontype="deconv",
-        # postrainstart=len(dataset.identities) * 100, warp=None, enable_id_encoder=not disable_id_encoder,
         postrainstart=100,
-        warp=None,
-        n_decoders=len(dataset.captures),
     )
 
     # volsampler = volsamplerlib.VolSampler()
