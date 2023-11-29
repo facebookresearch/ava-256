@@ -53,7 +53,7 @@ class Autoencoder(nn.Module):
         decoder_assembler: nn.Module,
         raymarcher: nn.Module,
         colorcal: nn.Module,
-        bgmodel: nn.Module,
+        bgmodel: Optional[nn.Module] = None,
     ):
         """"""
         super(Autoencoder, self).__init__()
@@ -199,8 +199,8 @@ class Autoencoder(nn.Module):
         if (camindex is not None) and (idindex is not None):
             rayrgb = self.colorcal(rayrgb, camindex, idindex)
 
-        # 4. Decode the background, this is somethng
-        if bg is None:
+        # 4. Decode the background
+        if bg is None and self.bgmodel is not None:
             # TODO(julieta) raise an error if bg is None and either camidx or idindex are None
             bg = self.bgmodel(camindex, idindex, samplecoords)
 
@@ -208,16 +208,18 @@ class Autoencoder(nn.Module):
         if bg is not None:
             rayrgb = rayrgb + (1.0 - rayalpha) * bg
         else:
-            c = np.asarray([0, 0, 0], dtype=np.float32)
-            rayrgb = rayrgb + (1.0 - rayalpha) * torch.from_numpy(c).to("cuda")[None, :, None, None]
+            # Add a black background
+            black = [0, 0, 0]
+            colour = np.asarray(black, dtype=np.float32)
+            rayrgb = rayrgb + (1.0 - rayalpha) * torch.from_numpy(colour).to("cuda")[None, :, None, None]
 
         resultout = {
-            # Returned every time
+            # === Returned every time ===
             "encoding": expr_code,
             "expr_mu": expr_mu,
             "expr_logstd": expr_logstd,
             "irgbrec": rayrgb,
-            # Returned if asked for, useful for debugging and visualization
+            # === Returned if asked for, useful for debugging and visualization ===
             "id_cond": id_cond if "idcond" in output_set else None,
             "samplecoords": samplecoords if "samplecooords" in output_set else None,
             "pos_img": pos_img if "pos_img" in output_set else None,

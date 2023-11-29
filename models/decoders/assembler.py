@@ -103,7 +103,8 @@ class DecoderAssembler(nn.Module):
 
         if gt_geo:
             # NOTE(julieta) If ground truth geometry is passed, use it as guiding mesh for the primitive placement.
-            # This is useful at the beginning of training, when the predicted geometry is bad.
+            # This is useful at the beginning of training, when the predicted geometry is bad. We still return the
+            # predicted geometry, so the geo branch is still getting trained
             geo = gt_geo * self.vertstd + self.vertmean
 
         # NOTE(julieta) do not do this, this is very slow :(
