@@ -7,9 +7,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PIL import Image
-
 from extensions.computeraydirs.computeraydirs import compute_raydirs
+from PIL import Image
 
 
 def color_normalize(src, dst):
@@ -52,7 +51,7 @@ class Autoencoder(nn.Module):
         bottleneck: nn.Module,
         decoder_assembler: nn.Module,
         raymarcher: nn.Module,
-        colorcal: nn.Module,
+        colorcal: Optional[nn.Module] = None,
         bgmodel: Optional[nn.Module] = None,
     ):
         """"""
@@ -196,7 +195,7 @@ class Autoencoder(nn.Module):
         )
 
         # color correction
-        if (camindex is not None) and (idindex is not None):
+        if (self.colorcal is not None) and (camindex is not None) and (idindex is not None):
             rayrgb = self.colorcal(rayrgb, camindex, idindex)
 
         # 4. Decode the background

@@ -1,405 +1,514 @@
-// Copyright (c) Meta Platforms, Inc. and affiliates.
-// All rights reserved.
-// 
-// This source code is licensed under the license found in the
-// LICENSE file in the root directory of this source tree.
-
-#include <torch/extension.h>
-#include <c10/cuda/CUDAStream.h>
-
 #include <vector>
 
-void compute_morton_cuda(
-        int N, int K,
-        float * primpos,
-        int * code,
-        int algorithm,
-        cudaStream_t stream);
+#include <c10/cuda/CUDAGuard.h>
+#include <c10/cuda/CUDAStream.h>
+#include <torch/extension.h>
 
-void build_tree_cuda(
-        int N, int K,
-        int * sortedcode,
-        int * nodechildren,
-        int * nodeparent,
-        cudaStream_t stream);
+#include "../common/utils.h"
 
-void compute_aabb_cuda(
-        int N, int K,
-        float * primpos,
-        float * primrot,
-        float * primscale,
-        int * sortedobjid,
-        int * nodechildren,
-        int * nodeparent,
-        float * nodeaabb,
-        int algorithm,
-        cudaStream_t stream);
+void raymarch_forward_cuda_uint(
+    int N,
+    int H,
+    int W,
+    int K,
+    int MD,
+    int MH,
+    int MW,
+    const float* rayposim,
+    const float* raydirim,
+    float stepsize,
+    const float* tminmaxim,
+    const int* sortedobjid,
+    const int* nodechildren,
+    const float* nodeaabb,
+    const uint8_t* tplate,
+    const float* warp,
+    const float* primpos,
+    const float* primrot,
+    const float* primscale,
+    uint8_t* rayrgbaim,
+    float* t_im,
+    bool chlast,
+    float fadescale,
+    float fadeexp,
+    int accum,
+    float termthresh,
+    int griddim,
+    int blocksizex,
+    int blocksizey,
+    bool broadcast_slab,
+    cudaStream_t stream);
 
-void raymarch_forward_cuda(
-        int N, int H, int W, int K,
-        float * rayposim,
-        float * raydirim,
-        float stepsize,
-        float * tminmaxim,
-
-        int * sortedobjid,
-        int * nodechildren,
-        float * nodeaabb,
-
-        float * primpos,
-        float * primrot,
-        float * primscale,
-
-        int TD, int TH, int TW,
-        float * tplate,
-        int WD, int WH, int WW,
-        float * warp,
-
-        float * rayrgbaim,
-        float * raysatim,
-        int * raytermim,
-
-        int algorithm, bool sortboxes, int maxhitboxes, bool synchitboxes,
-        bool chlast, float fadescale, float fadeexp, int accum, float termthresh,
-        int griddim, int blocksizex, int blocksizey,
-        cudaStream_t stream);
+void raymarch_forward_cuda_float(
+    int N,
+    int H,
+    int W,
+    int K,
+    int MD,
+    int MH,
+    int MW,
+    const float* rayposim,
+    const float* raydirim,
+    float stepsize,
+    const float* tminmaxim,
+    const int* sortedobjid,
+    const int* nodechildren,
+    const float* nodeaabb,
+    const float* tplate,
+    const float* warp,
+    const float* primpos,
+    const float* primrot,
+    const float* primscale,
+    float* rayrgbaim,
+    float* raysatim,
+    int* raytermim,
+    float* t_im,
+    bool chlast,
+    float fadescale,
+    float fadeexp,
+    int accum,
+    float termthresh,
+    int griddim,
+    int blocksizex,
+    int blocksizey,
+    bool broadcast_slab,
+    cudaStream_t stream);
 
 void raymarch_backward_cuda(
-        int N, int H, int W, int K,
-        float * rayposim,
-        float * raydirim,
-        float stepsize,
-        float * tminmaxim,
+    int N,
+    int H,
+    int W,
+    int K,
+    int MD,
+    int MH,
+    int MW,
+    const float* rayposim,
+    const float* raydirim,
+    float stepsize,
+    const float* tminmaxim,
+    const int* sortedobjid,
+    const int* nodechildren,
+    const float* nodeaabb,
+    const float* tplate,
+    const float* warp,
+    const float* primpos,
+    const float* primrot,
+    const float* primscale,
+    const float* rayrgbaim,
+    const float* raysatim,
+    const int* raytermim,
+    const float* grad_rayrgba,
+    float* grad_tplate,
+    float* grad_warp,
+    float* grad_primpos,
+    float* grad_primrot,
+    float* grad_primscale,
+    bool chlast,
+    float fadescale,
+    float fadeexp,
+    int accum,
+    float termthresh,
+    int griddim,
+    int blocksizex,
+    int blocksizey,
+    cudaStream_t stream);
 
-        int * sortedobjid,
-        int * nodechildren,
-        float * nodeaabb,
+void compute_morton_cuda(int N, int K, float* center, int* code, cudaStream_t stream);
 
-        float * primpos,
-        float * grad_primpos,
-        float * primrot,
-        float * grad_primrot,
-        float * primscale,
-        float * grad_primscale,
+void build_tree_cuda(
+    int N,
+    int K,
+    int* sortedcode,
+    int* nodechildren,
+    int* nodeparent,
+    cudaStream_t stream);
 
-        int TD, int TH, int TW,
-        float * tplate,
-        float * grad_tplate,
-        int WD, int WH, int WW,
-        float * warp,
-        float * grad_warp,
+void compute_aabb2_cuda(
+    int N,
+    int K,
+    int* sortedobjid,
+    float* primpos,
+    float* primrot,
+    float* primscale,
+    int* nodechildren,
+    int* nodeparent,
+    float* nodeaabb,
+    int* atom,
+    cudaStream_t stream);
 
-        float * rayrgbaim,
-        float * grad_rayrgba,
-        float * raysatim,
-        int * raytermim,
+std::vector<torch::Tensor> compute_morton(torch::Tensor center, torch::Tensor code) {
+  CHECK_INPUT(center);
+  CHECK_INPUT(code);
 
-        int algorithm, bool sortboxes, int maxhitboxes, bool synchitboxes,
-        bool chlast, float fadescale, float fadeexp, int accum, float termthresh,
-        int griddim, int blocksizex, int blocksizey,
-        cudaStream_t stream);
+  int N = center.size(0);
+  int K = center.size(1);
 
-#define CHECK_CUDA(x) AT_ASSERTM(x.is_cuda(), #x " must be a CUDA tensor")
-#define CHECK_CONTIGUOUS(x) AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
-#define CHECK_INPUT(x) CHECK_CUDA((x)); CHECK_CONTIGUOUS((x))
+  c10::cuda::CUDAGuard deviceGuard{center.device()};
+  cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-std::vector<torch::Tensor> compute_morton(
-        torch::Tensor primpos,
-        torch::Tensor code,
-        int algorithm) {
-    CHECK_INPUT(primpos);
-    CHECK_INPUT(code);
+  compute_morton_cuda(
+      N,
+      K,
+      reinterpret_cast<float*>(center.data_ptr()),
+      reinterpret_cast<int*>(code.data_ptr()),
+      stream);
 
-    int N = primpos.size(0);
-    int K = primpos.size(1);
-
-    compute_morton_cuda(
-            N, K,
-            reinterpret_cast<float *>(primpos.data_ptr()),
-            reinterpret_cast<int *>(code.data_ptr()),
-            algorithm,
-            0);
-
-    return {};
+  return {};
 }
 
-std::vector<torch::Tensor> build_tree(
-        torch::Tensor sortedcode,
-        torch::Tensor nodechildren,
-        torch::Tensor nodeparent) {
-    CHECK_INPUT(sortedcode);
-    CHECK_INPUT(nodechildren);
-    CHECK_INPUT(nodeparent);
+std::vector<torch::Tensor>
+build_tree(torch::Tensor sortedcode, torch::Tensor nodechildren, torch::Tensor nodeparent) {
+  CHECK_INPUT(sortedcode);
+  CHECK_INPUT(nodechildren);
+  CHECK_INPUT(nodeparent);
 
-    int N = sortedcode.size(0);
-    int K = sortedcode.size(1);
+  int N = sortedcode.size(0);
+  int K = sortedcode.size(1);
 
-    build_tree_cuda(N, K,
-            reinterpret_cast<int *>(sortedcode.data_ptr()),
-            reinterpret_cast<int *>(nodechildren.data_ptr()),
-            reinterpret_cast<int *>(nodeparent.data_ptr()),
-            0);
+  c10::cuda::CUDAGuard deviceGuard{sortedcode.device()};
+  cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-    return {};
+  build_tree_cuda(
+      N,
+      K,
+      reinterpret_cast<int*>(sortedcode.data_ptr()),
+      reinterpret_cast<int*>(nodechildren.data_ptr()),
+      reinterpret_cast<int*>(nodeparent.data_ptr()),
+      stream);
+
+  return {};
 }
 
-std::vector<torch::Tensor> compute_aabb(
-        torch::Tensor primpos,
-        torch::optional<torch::Tensor> primrot,
-        torch::optional<torch::Tensor> primscale,
-        torch::Tensor sortedobjid,
-        torch::Tensor nodechildren,
-        torch::Tensor nodeparent,
-        torch::Tensor nodeaabb,
-        int algorithm) {
-    CHECK_INPUT(sortedobjid);
-    CHECK_INPUT(primpos);
-    if (primrot) { CHECK_INPUT(*primrot); }
-    if (primscale) { CHECK_INPUT(*primscale); }
-    CHECK_INPUT(nodechildren);
-    CHECK_INPUT(nodeparent);
-    CHECK_INPUT(nodeaabb);
+std::vector<torch::Tensor> compute_aabb2(
+    torch::Tensor sortedobjid,
+    torch::Tensor primpos,
+    torch::Tensor primrot,
+    torch::Tensor primscale,
+    torch::Tensor nodechildren,
+    torch::Tensor nodeparent,
+    torch::Tensor nodeaabb) {
+  CHECK_INPUT(sortedobjid);
+  CHECK_INPUT(primpos);
+  CHECK_INPUT(primrot);
+  CHECK_INPUT(primscale);
+  CHECK_INPUT(nodechildren);
+  CHECK_INPUT(nodeparent);
+  CHECK_INPUT(nodeaabb);
 
-    int N = primpos.size(0);
-    int K = primpos.size(1);
+  int N = primpos.size(0);
+  int K = primpos.size(1);
 
-    compute_aabb_cuda(N, K,
-            reinterpret_cast<float *>(primpos.data_ptr()),
-            primrot ? reinterpret_cast<float *>(primrot->data_ptr()) : nullptr,
-            primscale ? reinterpret_cast<float *>(primscale->data_ptr()) : nullptr,
-            reinterpret_cast<int *>(sortedobjid.data_ptr()),
-            reinterpret_cast<int *>(nodechildren.data_ptr()),
-            reinterpret_cast<int *>(nodeparent.data_ptr()),
-            reinterpret_cast<float *>(nodeaabb.data_ptr()),
-            algorithm,
-            0);
+  c10::cuda::CUDAGuard deviceGuard{primpos.device()};
+  cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-    return {};
+  torch::TensorOptions options(primpos.device());
+  auto atom = torch::zeros({N * (K - 1)}, options.dtype(torch::kInt32));
+
+  compute_aabb2_cuda(
+      N,
+      K,
+      sortedobjid.data_ptr<int>(),
+      primpos.data_ptr<float>(),
+      primrot.data_ptr<float>(),
+      primscale.data_ptr<float>(),
+      nodechildren.data_ptr<int>(),
+      nodeparent.data_ptr<int>(),
+      nodeaabb.data_ptr<float>(),
+      atom.data_ptr<int>(),
+      stream);
+
+  return {};
 }
 
 std::vector<torch::Tensor> raymarch_forward(
-        torch::Tensor rayposim,
-        torch::Tensor raydirim,
-        float stepsize,
-        torch::Tensor tminmaxim,
+    const torch::Tensor rayposim,
+    const torch::Tensor raydirim,
+    double stepsize,
+    const torch::Tensor tminmaxim,
+    const torch::optional<torch::Tensor> sortedobjid,
+    const torch::optional<torch::Tensor> nodechildren,
+    const torch::optional<torch::Tensor> nodeaabb,
+    const torch::Tensor tplate,
+    const torch::optional<torch::Tensor> warp,
+    const torch::Tensor primpos,
+    const torch::Tensor primrot,
+    const torch::Tensor primscale,
+    torch::Tensor rayrgbaim,
+    torch::optional<torch::Tensor> raysatim,
+    torch::optional<torch::Tensor> raytermim,
+    torch::optional<torch::Tensor> t_im,
+    bool chlast = false,
+    double fadescale = 8.f,
+    double fadeexp = 8.f,
+    int64_t accum = 0,
+    double termthresh = 0.f,
+    int64_t griddim = 3,
+    int64_t blocksizex = 6,
+    int64_t blocksizey = 32) {
+  CHECK_INPUT(rayposim);
+  CHECK_INPUT(raydirim);
+  CHECK_INPUT(tminmaxim);
+  if (sortedobjid) {
+    CHECK_INPUT(*sortedobjid);
+  }
+  if (nodechildren) {
+    CHECK_INPUT(*nodechildren);
+  }
+  if (nodeaabb) {
+    CHECK_INPUT(*nodeaabb);
+  }
+  CHECK_INPUT(tplate);
+  if (warp) {
+    CHECK_INPUT(*warp);
+  }
+  CHECK_INPUT(primpos);
+  CHECK_INPUT(primrot);
+  CHECK_INPUT(primscale);
+  CHECK_INPUT(rayrgbaim);
+  if (t_im) {
+    CHECK_INPUT(*t_im);
+  }
 
-        torch::optional<torch::Tensor> sortedobjid,
-        torch::optional<torch::Tensor> nodechildren,
-        torch::optional<torch::Tensor> nodeaabb,
+  const int N = rayposim.size(0);
+  const int H = rayposim.size(1);
+  const int W = rayposim.size(2);
+  const int K = primpos.size(1);
+  const int MD = tplate.size(chlast ? 2 : 3);
+  const int MH = tplate.size(chlast ? 3 : 4);
+  const int MW = tplate.size(chlast ? 4 : 5);
 
-        torch::Tensor primpos,
-        torch::optional<torch::Tensor> primrot,
-        torch::optional<torch::Tensor> primscale,
+  int TN = tplate.size(0);
+  if (TN != N && TN != 1) {
+    throw std::runtime_error("Template batch size must either match other batch sizes, or be 1.");
+  }
 
-        torch::Tensor tplate,
-        torch::optional<torch::Tensor> warp,
+  if (primpos.size(0) != TN || primrot.size(0) != TN || primscale.size(0) != TN) {
+    throw std::runtime_error(
+        "All slab components (template, primpos, primrot, primscale) must have the same batchsize.");
+  }
 
-        torch::Tensor rayrgbaim,
-        torch::optional<torch::Tensor> raysatim,
-        torch::optional<torch::Tensor> raytermim,
+  bool broadcast_slab = (TN != N);
 
-        int algorithm=0,
-        bool sortboxes=true,
-        int maxhitboxes=512,
-        bool synchitboxes=false,
-        bool chlast=false,
-        float fadescale=8.f,
-        float fadeexp=8.f,
-        int accum=0,
-        float termthresh=0.f,
-        int griddim=3,
-        int blocksizex=8,
-        int blocksizey=16) {
-    CHECK_INPUT(rayposim);
-    CHECK_INPUT(raydirim);
-    CHECK_INPUT(tminmaxim);
-    if (sortedobjid) { CHECK_INPUT(*sortedobjid); }
-    if (nodechildren) { CHECK_INPUT(*nodechildren); }
-    if (nodeaabb) { CHECK_INPUT(*nodeaabb); }
-    CHECK_INPUT(tplate);
-    if (warp) { CHECK_INPUT(*warp); }
-    CHECK_INPUT(primpos);
-    if (primrot) { CHECK_INPUT(*primrot); }
-    if (primscale) { CHECK_INPUT(*primscale); }
-    CHECK_INPUT(rayrgbaim);
-    if (raysatim) { CHECK_INPUT(*raysatim); }
-    if (raytermim) { CHECK_INPUT(*raytermim); }
+  c10::cuda::CUDAGuard deviceGuard{rayposim.device()};
+  cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-    int N = rayposim.size(0);
-    int H = rayposim.size(1);
-    int W = rayposim.size(2);
-    int K = primpos.size(1);
-
-    int TD, TH, TW;
-    if (chlast) {
-        TD = tplate.size(2); TH = tplate.size(3); TW = tplate.size(4);
-    } else {
-        TD = tplate.size(3); TH = tplate.size(4); TW = tplate.size(5);
+  if (tplate.dtype() == torch::kFloat32) {
+    if (raysatim) {
+      CHECK_INPUT(*raysatim);
     }
-
-    int WD = 0, WH = 0, WW = 0;
-    if (warp) {
-        if (chlast) {
-            WD = warp->size(2); WH = warp->size(3); WW = warp->size(4);
-        } else {
-            WD = warp->size(3); WH = warp->size(4); WW = warp->size(5);
-        }
+    if (raytermim) {
+      CHECK_INPUT(*raytermim);
     }
+    raymarch_forward_cuda_float(
+        N,
+        H,
+        W,
+        K,
+        MD,
+        MH,
+        MW,
+        rayposim.data_ptr<float>(),
+        raydirim.data_ptr<float>(),
+        stepsize,
+        tminmaxim.data_ptr<float>(),
+        sortedobjid ? sortedobjid->data_ptr<int>() : nullptr,
+        nodechildren ? nodechildren->data_ptr<int>() : nullptr,
+        nodeaabb ? nodeaabb->data_ptr<float>() : nullptr,
+        tplate.data_ptr<float>(),
+        warp ? warp->data_ptr<float>() : nullptr,
+        primpos.data_ptr<float>(),
+        primrot.data_ptr<float>(),
+        primscale.data_ptr<float>(),
+        rayrgbaim.data_ptr<float>(),
+        raysatim ? raysatim->data_ptr<float>() : nullptr,
+        raytermim ? raytermim->data_ptr<int>() : nullptr,
+        t_im ? t_im->data_ptr<float>() : nullptr,
+        chlast,
+        fadescale,
+        fadeexp,
+        accum,
+        termthresh,
+        griddim,
+        blocksizex,
+        blocksizey,
+        broadcast_slab,
+        stream);
+  } else if (tplate.dtype() == torch::kUInt8) {
+    if (rayrgbaim.dtype() != torch::kUInt8) {
+      throw std::runtime_error(
+          "raymarch_forward, when given uint8 template, expects uint8 rayrgbaim as output.");
+    }
+    raymarch_forward_cuda_uint(
+        N,
+        H,
+        W,
+        K,
+        MD,
+        MH,
+        MW,
+        rayposim.data_ptr<float>(),
+        raydirim.data_ptr<float>(),
+        stepsize,
+        tminmaxim.data_ptr<float>(),
+        sortedobjid ? sortedobjid->data_ptr<int>() : nullptr,
+        nodechildren ? nodechildren->data_ptr<int>() : nullptr,
+        nodeaabb ? nodeaabb->data_ptr<float>() : nullptr,
+        tplate.data_ptr<uint8_t>(),
+        warp ? warp->data_ptr<float>() : nullptr,
+        primpos.data_ptr<float>(),
+        primrot.data_ptr<float>(),
+        primscale.data_ptr<float>(),
+        rayrgbaim.data_ptr<uint8_t>(),
+        t_im ? t_im->data_ptr<float>() : nullptr,
+        chlast,
+        fadescale,
+        fadeexp,
+        accum,
+        termthresh,
+        griddim,
+        blocksizex,
+        blocksizey,
+        broadcast_slab,
+        stream);
+  }
 
-    raymarch_forward_cuda(N, H, W, K,
-            reinterpret_cast<float *>(rayposim.data_ptr()),
-            reinterpret_cast<float *>(raydirim.data_ptr()),
-            stepsize,
-            reinterpret_cast<float *>(tminmaxim.data_ptr()),
-            sortedobjid ? reinterpret_cast<int *>(sortedobjid->data_ptr()) : nullptr,
-            nodechildren ? reinterpret_cast<int *>(nodechildren->data_ptr()) : nullptr,
-            nodeaabb ? reinterpret_cast<float *>(nodeaabb->data_ptr()) : nullptr,
-
-            // prim transforms
-            reinterpret_cast<float *>(primpos.data_ptr()),
-            primrot ? reinterpret_cast<float *>(primrot->data_ptr()) : nullptr,
-            primscale ? reinterpret_cast<float *>(primscale->data_ptr()) : nullptr,
-
-            // prim sampler
-            TD, TH, TW,
-            reinterpret_cast<float *>(tplate.data_ptr()),
-            WD, WH, WW,
-            warp ? reinterpret_cast<float *>(warp->data_ptr()) : nullptr,
-
-            // prim accumulator
-            reinterpret_cast<float *>(rayrgbaim.data_ptr()),
-            raysatim ? reinterpret_cast<float *>(raysatim->data_ptr()) : nullptr,
-            raytermim ? reinterpret_cast<int *>(raytermim->data_ptr()) : nullptr,
-
-            // options
-            algorithm, sortboxes, maxhitboxes, synchitboxes, chlast, fadescale, fadeexp, accum, termthresh,
-            griddim, blocksizex, blocksizey,
-            0);
-
-    return {};
+  return {};
 }
 
 std::vector<torch::Tensor> raymarch_backward(
-        torch::Tensor rayposim,
-        torch::Tensor raydirim,
-        float stepsize,
-        torch::Tensor tminmaxim,
+    const torch::Tensor rayposim,
+    const torch::Tensor raydirim,
+    double stepsize,
+    const torch::Tensor tminmaxim,
+    const torch::optional<torch::Tensor> sortedobjid,
+    const torch::optional<torch::Tensor> nodechildren,
+    const torch::optional<torch::Tensor> nodeaabb,
+    const torch::Tensor tplate,
+    const torch::optional<torch::Tensor> warp,
+    const torch::Tensor primpos,
+    const torch::Tensor primrot,
+    const torch::Tensor primscale,
+    const torch::Tensor rayrgbaim,
+    const torch::optional<torch::Tensor> raysatim,
+    const torch::optional<torch::Tensor> raytermim,
+    const torch::Tensor grad_rayrgba,
+    torch::Tensor grad_tplate,
+    torch::optional<torch::Tensor> grad_warp,
+    torch::Tensor grad_primpos,
+    torch::Tensor grad_primrot,
+    torch::Tensor grad_primscale,
+    bool chlast = false,
+    double fadescale = 8.f,
+    double fadeexp = 8.f,
+    int64_t accum = 0,
+    double termthresh = 0.f,
+    int64_t griddim = 3,
+    int64_t blocksizex = 6,
+    int64_t blocksizey = 32) {
+  CHECK_INPUT(rayposim);
+  CHECK_INPUT(raydirim);
+  CHECK_INPUT(tminmaxim);
+  if (sortedobjid) {
+    CHECK_INPUT(*sortedobjid);
+  }
+  if (nodechildren) {
+    CHECK_INPUT(*nodechildren);
+  }
+  if (nodeaabb) {
+    CHECK_INPUT(*nodeaabb);
+  }
+  CHECK_INPUT(tplate);
+  if (warp) {
+    CHECK_INPUT(*warp);
+  }
+  CHECK_INPUT(primpos);
+  CHECK_INPUT(primrot);
+  CHECK_INPUT(primscale);
+  CHECK_INPUT(rayrgbaim);
+  if (raysatim) {
+    CHECK_INPUT(*raysatim);
+  }
+  if (raytermim) {
+    CHECK_INPUT(*raytermim);
+  }
+  CHECK_INPUT(grad_rayrgba);
+  CHECK_INPUT(grad_tplate);
+  if (grad_warp) {
+    CHECK_INPUT(*grad_warp);
+  }
+  CHECK_INPUT(grad_primpos);
+  CHECK_INPUT(grad_primrot);
+  CHECK_INPUT(grad_primscale);
 
-        torch::optional<torch::Tensor> sortedobjid,
-        torch::optional<torch::Tensor> nodechildren,
-        torch::optional<torch::Tensor> nodeaabb,
+  const int N = rayposim.size(0);
+  const int H = rayposim.size(1);
+  const int W = rayposim.size(2);
+  const int K = primpos.size(1);
+  const int MD = tplate.size(chlast ? 2 : 3);
+  const int MH = tplate.size(chlast ? 3 : 4);
+  const int MW = tplate.size(chlast ? 4 : 5);
 
-        torch::Tensor primpos,
-        torch::Tensor grad_primpos,
-        torch::optional<torch::Tensor> primrot,
-        torch::optional<torch::Tensor> grad_primrot,
-        torch::optional<torch::Tensor> primscale,
-        torch::optional<torch::Tensor> grad_primscale,
+  c10::cuda::CUDAGuard deviceGuard{rayposim.device()};
+  cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-        torch::Tensor tplate,
-        torch::Tensor grad_tplate,
-        torch::optional<torch::Tensor> warp,
-        torch::optional<torch::Tensor> grad_warp,
+  raymarch_backward_cuda(
+      N,
+      H,
+      W,
+      K,
+      MD,
+      MH,
+      MW,
+      reinterpret_cast<float*>(rayposim.data_ptr()),
+      reinterpret_cast<float*>(raydirim.data_ptr()),
+      stepsize,
+      reinterpret_cast<float*>(tminmaxim.data_ptr()),
+      sortedobjid ? reinterpret_cast<int*>(sortedobjid->data_ptr()) : nullptr,
+      nodechildren ? reinterpret_cast<int*>(nodechildren->data_ptr()) : nullptr,
+      nodeaabb ? reinterpret_cast<float*>(nodeaabb->data_ptr()) : nullptr,
+      reinterpret_cast<float*>(tplate.data_ptr()),
+      warp ? reinterpret_cast<float*>(warp->data_ptr()) : nullptr,
+      reinterpret_cast<float*>(primpos.data_ptr()),
+      reinterpret_cast<float*>(primrot.data_ptr()),
+      reinterpret_cast<float*>(primscale.data_ptr()),
+      reinterpret_cast<float*>(rayrgbaim.data_ptr()),
+      raysatim ? reinterpret_cast<float*>(raysatim->data_ptr()) : nullptr,
+      raytermim ? reinterpret_cast<int*>(raytermim->data_ptr()) : nullptr,
+      reinterpret_cast<float*>(grad_rayrgba.data_ptr()),
+      reinterpret_cast<float*>(grad_tplate.data_ptr()),
+      grad_warp ? reinterpret_cast<float*>(grad_warp->data_ptr()) : nullptr,
+      reinterpret_cast<float*>(grad_primpos.data_ptr()),
+      reinterpret_cast<float*>(grad_primrot.data_ptr()),
+      reinterpret_cast<float*>(grad_primscale.data_ptr()),
+      chlast,
+      fadescale,
+      fadeexp,
+      accum,
+      termthresh,
+      griddim,
+      blocksizex,
+      blocksizey,
+      stream);
 
-        torch::Tensor rayrgbaim,
-        torch::Tensor grad_rayrgba,
-        torch::optional<torch::Tensor> raysatim,
-        torch::optional<torch::Tensor> raytermim,
-
-        int algorithm=0,
-        bool sortboxes=true,
-        int maxhitboxes=512,
-        bool synchitboxes=false,
-        bool chlast=false,
-        float fadescale=8.f,
-        float fadeexp=8.f,
-        int accum=0,
-        float termthresh=0.f,
-        int griddim=3,
-        int blocksizex=8,
-        int blocksizey=16) {
-    CHECK_INPUT(rayposim);
-    CHECK_INPUT(raydirim);
-    CHECK_INPUT(tminmaxim);
-    if (sortedobjid) { CHECK_INPUT(*sortedobjid); }
-    if (nodechildren) { CHECK_INPUT(*nodechildren); }
-    if (nodeaabb) { CHECK_INPUT(*nodeaabb); }
-    CHECK_INPUT(tplate);
-    if (warp) { CHECK_INPUT(*warp); }
-    CHECK_INPUT(primpos);
-    if (primrot) { CHECK_INPUT(*primrot); }
-    if (primscale) { CHECK_INPUT(*primscale); }
-    CHECK_INPUT(rayrgbaim);
-    if (raysatim) { CHECK_INPUT(*raysatim); }
-    if (raytermim) { CHECK_INPUT(*raytermim); }
-    CHECK_INPUT(grad_rayrgba);
-    CHECK_INPUT(grad_tplate);
-    if (grad_warp) { CHECK_INPUT(*grad_warp); }
-    CHECK_INPUT(grad_primpos);
-    if (grad_primrot) { CHECK_INPUT(*grad_primrot); }
-    if (grad_primscale) { CHECK_INPUT(*grad_primscale); }
-
-    int N = rayposim.size(0);
-    int H = rayposim.size(1);
-    int W = rayposim.size(2);
-    int K = primpos.size(1);
-
-    int TD, TH, TW;
-    if (chlast) {
-        TD = tplate.size(2); TH = tplate.size(3); TW = tplate.size(4);
-    } else {
-        TD = tplate.size(3); TH = tplate.size(4); TW = tplate.size(5);
-    }
-
-    int WD = 0, WH = 0, WW = 0;
-    if (warp) {
-        if (chlast) {
-            WD = warp->size(2); WH = warp->size(3); WW = warp->size(4);
-        } else {
-            WD = warp->size(3); WH = warp->size(4); WW = warp->size(5);
-        }
-    }
-
-    raymarch_backward_cuda(N, H, W, K,
-            reinterpret_cast<float *>(rayposim.data_ptr()),
-            reinterpret_cast<float *>(raydirim.data_ptr()),
-            stepsize,
-            reinterpret_cast<float *>(tminmaxim.data_ptr()),
-            sortedobjid ? reinterpret_cast<int *>(sortedobjid->data_ptr()) : nullptr,
-            nodechildren ? reinterpret_cast<int *>(nodechildren->data_ptr()) : nullptr,
-            nodeaabb ? reinterpret_cast<float *>(nodeaabb->data_ptr()) : nullptr,
-
-            reinterpret_cast<float *>(primpos.data_ptr()),
-            reinterpret_cast<float *>(grad_primpos.data_ptr()),
-            primrot ? reinterpret_cast<float *>(primrot->data_ptr()) : nullptr,
-            grad_primrot ? reinterpret_cast<float *>(grad_primrot->data_ptr()) : nullptr,
-            primscale ? reinterpret_cast<float *>(primscale->data_ptr()) : nullptr,
-            grad_primscale ? reinterpret_cast<float *>(grad_primscale->data_ptr()) : nullptr,
-
-            TD, TH, TW,
-            reinterpret_cast<float *>(tplate.data_ptr()),
-            reinterpret_cast<float *>(grad_tplate.data_ptr()),
-            WD, WH, WW,
-            warp ? reinterpret_cast<float *>(warp->data_ptr()) : nullptr,
-            grad_warp ? reinterpret_cast<float *>(grad_warp->data_ptr()) : nullptr,
-
-            reinterpret_cast<float *>(rayrgbaim.data_ptr()),
-            reinterpret_cast<float *>(grad_rayrgba.data_ptr()),
-            raysatim ? reinterpret_cast<float *>(raysatim->data_ptr()) : nullptr,
-            raytermim ? reinterpret_cast<int *>(raytermim->data_ptr()) : nullptr,
-
-            algorithm, sortboxes, maxhitboxes, synchitboxes, chlast, fadescale, fadeexp, accum, termthresh,
-            griddim, blocksizex, blocksizey,
-            0);
-
-    return {};
+  return {};
 }
 
+#ifndef NO_PYBIND
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("compute_morton", &compute_morton, "compute morton codes (CUDA)");
-    m.def("build_tree", &build_tree, "build BVH tree (CUDA)");
-    m.def("compute_aabb", &compute_aabb, "compute AABB sizes (CUDA)");
+  m.def("compute_morton", &compute_morton, "compute morton codes (CUDA)");
+  m.def("build_tree", &build_tree, "build BVH tree (CUDA)");
+  m.def("compute_aabb2", &compute_aabb2, "compute AABB sizes (CUDA)");
 
-    m.def("raymarch_forward",  &raymarch_forward,  "raymarch forward (CUDA)");
-    m.def("raymarch_backward", &raymarch_backward, "raymarch backward (CUDA)");
+  m.def("raymarch_forward", &raymarch_forward, "raymarch forward (CUDA)");
+  m.def("raymarch_backward", &raymarch_backward, "raymarch backward (CUDA)");
+}
+#endif
+
+TORCH_LIBRARY(mvpraymarch_ext, m) {
+  m.def("compute_morton", &compute_morton);
+  m.def("build_tree", &build_tree);
+  m.def("compute_aabb2", &compute_aabb2);
+
+  m.def("raymarch_forward", &raymarch_forward);
+  m.def("raymarch_backward", &raymarch_backward);
 }
