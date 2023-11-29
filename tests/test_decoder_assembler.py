@@ -12,13 +12,12 @@ def test_decoder_assembler_sizes():
 
     nprims = 128 * 128
     primsize = (8, 8, 8)
-    imsize = int(np.sqrt(nprims)) * primsize[1]
 
     # Load topology
     dotobj = load_obj("assets/face_topology.obj")
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
-    # Load a dummy geometry object to get the number of vertices
+    # Load a dummy geometry object to get plausible mean and std verts
     verts = torch.from_numpy(np.fromfile("assets/021924.bin", dtype=np.float32).reshape(1, -1, 3))
 
     decoder = DecoderAssembler(
@@ -30,7 +29,6 @@ def test_decoder_assembler_sizes():
         volradius=256.0,
         nprims=nprims,
         primsize=primsize,
-        postrainstart=100,
     )
 
     ex_enc = torch.rand([1, 16, 4, 4])
@@ -53,11 +51,10 @@ def test_decoder_assembler_sizes():
         "b_geo": copy.deepcopy(id_biases),
     }
 
-    decouts, losses = decoder(id_cond, ex_enc, view, loss_set={"primvolsum"})
+    decouts = decoder(id_cond, ex_enc, view)
 
     assert decouts["verts"].shape == verts.shape
     assert decouts["template"].shape == torch.Size([1, 128**2, 4, *primsize])
     assert decouts["primpos"].shape == torch.Size([1, 128**2, 3])
     assert decouts["primrot"].shape == torch.Size([1, 128**2, 3, 3])
     assert decouts["primscale"].shape == torch.Size([1, 128**2, 3])
-    assert losses["primvolsum"] > 0.0

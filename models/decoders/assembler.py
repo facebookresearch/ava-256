@@ -1,6 +1,5 @@
-import time
 from math import sqrt
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -23,7 +22,6 @@ class DecoderAssembler(nn.Module):
         volradius: float,
         nprims: int = 128 * 128,
         primsize: Tuple[int, int, int] = (8, 8, 8),
-        postrainstart: int = 100,
     ):
         super(DecoderAssembler, self).__init__()
 
@@ -31,7 +29,6 @@ class DecoderAssembler(nn.Module):
 
         self.nprims = nprims
         self.primsize = primsize
-        self.postrainstart = postrainstart
         self.rodrig = models.utils.Rodrigues()
 
         # payload decoder
@@ -65,42 +62,49 @@ class DecoderAssembler(nn.Module):
             "barim", torch.tensor(np.load("{}/retop_barim_1024.npy".format(idximpath))), persistent=False
         )
 
-        self.register_buffer("adaptwarps", 0 * torch.ones(self.nprims))
+        self.register_buffer("adaptwarps", torch.zeros(self.nprims))
 
     def forward(
         self,
         id_cond: Dict[str, torch.Tensor],
-        encoding: torch.Tensor,
+        expr_encoding: torch.Tensor,
         viewpos: torch.Tensor,
-        condinput=None,
-        trainiter=-1,  # TODO(julieta) do not change the forward pass based on the training iteration
-        loss_set=set(),
-    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, float]]:
+        running_avg_scale: bool = False,
+        gt_geo: Optional[torch.Tensor] = None,
+        residuals_weight: float = 1.0,
+    ) -> Dict[str, torch.Tensor]:
         """
-        Parameters
-        ----------
-        encoding : [B, 256] Expression encoding of current frame
-        id_cond: Dictionary with geometry and texture identity biases and code
-        viewpos: Viewing position of target camera view
-        condinput: Additional conditioning input (e.g., headpose) # TODO(julieta maybe remove?)
-        trainiter: Current training iteration
-        loss_set: Set of losses to compute and return
+        Params:
+            encoding : [B, 256] Expression encoding of current frame
+            id_cond: Dictionary with geometry and texture identity biases and code
+            viewpos: [B, 3] Viewing position of target camera view
+            running_avg_scale: Whether to compute the scale with a running average
+            gt_geo: [B, 7306, 3] Ground truth geometry. If passed, this is used as a guide mesh
+            residuals_weight: Float deciding how much the residuals should be taken into account, as opposed to:
+                zero for positions, zero for rotations (in rodrigues' representations zero vec is an identity rotation),
+                and one for scale
         Returns
-        -------
-        result : Tuple of two dictionaries.
-            The first dictionary contains predicted geometry (vertex positions), primitive contents (rgb and alpha) as
+            A first dictionary contains predicted geometry (vertex positions), primitive contents (rgb and alpha) as
             well as locations, scaling, and rotations.
-            The second dictionary contains any requested losses.
         """
         nprims = self.nprims
 
-        # TODO:
-        if condinput is not None:
-            encoding = torch.cat([encoding, condinput], dim=1)
-
         z_geo, b_geo = id_cond["z_geo"], id_cond["b_geo"]
-        primalpha, geo, primposresid, primrvecresid, primscaleresid = self.geodec(encoding, z_geo, b_geo)
+        (
+            primalpha,
+            geo,
+            primitives_position_residuals,
+            primitives_rotation_residuals,
+            primitives_scale_residuals,
+        ) = self.geodec(expr_encoding, z_geo, b_geo)
         geo = geo * self.vertstd + self.vertmean
+
+        predicted_geo = geo
+
+        if gt_geo:
+            # NOTE(julieta) If ground truth geometry is passed, use it as guiding mesh for the primitive placement.
+            # This is useful at the beginning of training, when the predicted geometry is bad.
+            geo = gt_geo * self.vertstd + self.vertmean
 
         # NOTE(julieta) do not do this, this is very slow :(
         # postex = torch.stack([
@@ -139,7 +143,7 @@ class DecoderAssembler(nn.Module):
             primscale = 12.0
 
             ###################################################
-            if trainiter < 100:
+            if running_avg_scale:
                 with torch.no_grad():
                     centdiffx = postex[:, :, 32::64, (32 + 64) :: 64] - postex[:, :, 32::64, 32:-64:64]
                     centdiffx = torch.cat((centdiffx, centdiffx[:, :, :, -1:]), dim=3)
@@ -175,7 +179,7 @@ class DecoderAssembler(nn.Module):
             primscale = 48.0
 
             ###################################################
-            if trainiter < 100:
+            if running_avg_scale:
                 with torch.no_grad():
                     centdiffx = postex[:, :, 4::8, (4 + 8) :: 8] - postex[:, :, 4::8, 4:-8:8]
                     centdiffx = torch.cat((centdiffx, centdiffx[:, :, :, -1:]), dim=3)
@@ -218,7 +222,7 @@ class DecoderAssembler(nn.Module):
                 "v coordinate centres have not been computed yet, which means the requested number of primitives is not supported yet"
             )
 
-        # # compute TBN matrix
+        # Compute TBN matrix
         tangent = vcenterdu
         tangent = tangent / torch.norm(tangent, dim=-1, keepdim=True).clamp(min=1e-8)
         normal = torch.cross(tangent, vcenterdv, dim=3)
@@ -227,43 +231,42 @@ class DecoderAssembler(nn.Module):
         bitangent = bitangent / torch.norm(bitangent, dim=-1, keepdim=True).clamp(min=1e-8)
         primrot = (
             torch.stack((tangent, bitangent, normal), dim=-2)
-            .view(encoding.size(0), -1, 3, 3)
+            .view(expr_encoding.size(0), -1, 3, 3)
             .contiguous()
             .permute(0, 1, 3, 2)
             .contiguous()
         )
 
-        if trainiter <= self.postrainstart:
-            primposresid = primposresid * 0.0
-            primrvecresid = primrvecresid * 0.0
-            primscaleresid = primscaleresid * 0.0 + 1.0
-        elif trainiter <= 2 * self.postrainstart:
-            weight = (2 * self.postrainstart - trainiter) / (self.postrainstart + 1)
-            primposresid = primposresid * (1 - weight) + weight * 0.0
-            primrvecresid = primrvecresid * (1 - weight) + weight * 0.0
-            primscaleresid = primscaleresid * (1 - weight) + weight * 1.0
+        rw = sorted([0.0, residuals_weight, 1.0])[1]  # clamp between 0 and 1
+        if rw < 1.0:
+            primitives_position_residuals = primitives_position_residuals * rw
+            primitives_rotation_residuals = primitives_rotation_residuals * rw
+            primitives_scale_residuals = primitives_scale_residuals * rw + (1 - rw)
 
-        primpos = primpos + primposresid
-        primrotresid = self.rodrig(primrvecresid.view(-1, 3)).view(encoding.size(0), nprims, 3, 3)
-        primrot = torch.bmm(primrot.view(-1, 3, 3), primrotresid.view(-1, 3, 3)).view(encoding.size(0), nprims, 3, 3)
-        primscale = primscale * primscaleresid
+        primpos = primpos + primitives_position_residuals
+        primrotresid = self.rodrig(primitives_rotation_residuals.view(-1, 3)).view(expr_encoding.size(0), nprims, 3, 3)
+        primrot = torch.bmm(primrot.view(-1, 3, 3), primrotresid.view(-1, 3, 3)).view(
+            expr_encoding.size(0), nprims, 3, 3
+        )
+        primscale = primscale * primitives_scale_residuals
 
         viewdirs = viewpos / torch.sqrt(torch.sum(viewpos**2, dim=1, keepdim=True))
 
         z_tex, b_tex = id_cond["z_tex"], id_cond["b_tex"]
-        primrgb = self.rgbdec(encoding, z_tex, b_tex, view=viewdirs)
+        primrgb = self.rgbdec(expr_encoding, z_tex, b_tex, view=viewdirs)
 
         # TODO(julieta) this is denormalizing with hardcoded values... do something about this
         template = torch.cat([F.relu(primrgb * 25.0 + 100.0), F.relu(primalpha)], dim=2)
 
-        losses = dict()
-        if "primvolsum" in loss_set:
-            losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
+        # TODO(julieta) move losses outside
+        # losses = dict()
+        # if "primvolsum" in loss_set:
+        #     losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
 
         return {
-            "verts": geo,
+            "verts": predicted_geo,
             "template": template,
             "primpos": primpos,
             "primrot": primrot,
             "primscale": primscale,
-        }, losses
+        }  # , losses
