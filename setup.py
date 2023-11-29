@@ -198,24 +198,6 @@ if __name__ == "__main__":
                 extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
             CUDAExtension(
-                "extensions.integprior.integprior_ext",
-                sources=[
-                    "extensions/integprior/integprior.cpp",
-                    "extensions/integprior/integprior_kernel.cu",
-                ],
-                include_dirs=[common_incdir, mvpraymarch_incdir],
-                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
-            ),
-            CUDAExtension(
-                "extensions.primintersection.primintersection_ext",
-                sources=[
-                    "extensions/primintersection/primintersection.cpp",
-                    "extensions/primintersection/primintersection_kernel.cu",
-                ],
-                include_dirs=[common_incdir, mvpraymarch_incdir],
-                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
-            ),
-            CUDAExtension(
                 "extensions.computeraydirs.computeraydirs_ext",
                 sources=[
                     "extensions/computeraydirs/computeraydirs.cpp",

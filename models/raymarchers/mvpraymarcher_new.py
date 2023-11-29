@@ -6,8 +6,6 @@ from typing import Dict, Optional, Tuple
 import torch as th
 
 from extensions.mvpraymarch.mvpraymarch import mvpraymarch
-from extensions.integprior.integprior import integprior
-from extensions.primintersection.primintersection import primintersection
 
 
 class Raymarcher(th.nn.Module):
@@ -26,12 +24,11 @@ class Raymarcher(th.nn.Module):
         self.primintscale = float(config.render.get("primintscale", 1.0))
         self.use_primint = bool(config.train.loss_weights.get("primint", False))
         self.use_integprior = bool(config.train.loss_weights.get("integprior", False))
-        self.fixed_bvh_cache = {-1 : (th.empty(0), th.empty(0), th.empty(0))}
+        self.fixed_bvh_cache = {-1: (th.empty(0), th.empty(0), th.empty(0))}
 
     def forward(
         self, raypos, raydir, tminmax, outputs: Dict[str, th.Tensor], with_pos_img: bool = False
     ) -> Tuple[Optional[th.Tensor], Optional[th.Tensor], th.Tensor, Optional[th.Tensor]]:
-
         # Filter out any prims that were generated but not used (ex: if we
         # decode prims from a texture atlas w/empty space, the prims whose
         # centers come from empty space will be invalid).
@@ -100,67 +97,3 @@ class Raymarcher(th.nn.Module):
             pos_img = (raypos + raydir * t_img[..., None]) * self.volume_radius
 
         return rayrgb, rayalpha, rayrgba, pos_img
-
-    @th.jit.unused
-    def compute_losses(self, inputs, outputs, data) -> Dict[str, th.Tensor]:
-        loss = {}
-
-        # Filter out any prims that were generated but not used (ex: if we
-        # decode prims from a texture atlas w/empty space, the prims whose
-        # centers come from empty space will be invalid).
-        inputs = dict(inputs)
-        if "valid_prims" in inputs:
-            valid_prims = inputs["valid_prims"]
-            assert valid_prims.shape[0] == inputs["template"].shape[1]
-
-            inputs["template"] = inputs["template"][:, valid_prims].contiguous()
-            inputs["primpos"] = inputs["primpos"][:, valid_prims].contiguous()
-            inputs["primrot"] = inputs["primrot"][:, valid_prims].contiguous()
-            inputs["primscale"] = inputs["primscale"][:, valid_prims].contiguous()
-            if "warp" in inputs:
-                inputs["warp"] = inputs["warp"][:, valid_prims].contiguous()
-
-        if self.use_primint or self.use_integprior:
-            raydir = outputs["raydir"]
-            viewpos = outputs["viewpos"]
-            raypos = viewpos[:, None, None, :].expand_as(raydir).contiguous() / self.volume_radius
-
-        # prior on rays intersecting primitives
-        if self.use_primint:
-            primint = primintersection(
-                raypos,
-                raydir,
-                inputs["primpos"],
-                inputs["primrot"],
-                inputs["primscale"] * self.primintscale,
-            )
-            primint_loss = primint.mean()
-
-            # TODO: Figure out why primint loss can be unstable.
-            if th.isnan(primint_loss).item() or th.isinf(primint_loss).item():
-                primint_loss = th.tensor(0, device=raydir.device, dtype=th.float32)
-
-            loss["primint"] = primint_loss
-
-        # prior to encourage early ray saturation
-        if self.use_integprior:
-            integpr = integprior(
-                raypos=raypos,
-                raydir=raydir,
-                stepsize=self.dt / self.volume_radius,
-                tminmax=outputs["tminmax"],
-                template=inputs["template"],
-                warp=inputs.get("warp", None),
-                primpos=inputs["primpos"],
-                primrot=inputs["primrot"],
-                primscale=inputs["primscale"],
-                fadescale=self.fadescale,
-                fadeexp=self.fadeexp,
-                usebvh=self.usebvh,
-                accum=self.accum,
-                termthresh=self.termthresh,
-                chlast=self.chlast,
-            )
-            loss["integprior"] = integpr.mean()
-
-        return loss
