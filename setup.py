@@ -1,13 +1,14 @@
+import glob
 import os
 import re
-import sys
 import socket
-import glob
 import subprocess
-from setuptools import setup
+import sys
 
 import torch
-from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtension
+from setuptools import setup
+from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDAExtension
+
 
 # Create a custom subclass that doesn't use Ninja, since Ninja doesn't support
 # building multiple extension modules in parallel.
@@ -16,9 +17,11 @@ class BuildExtension2(BuildExtension):
         kwargs["use_ninja"] = False
         super().__init__(*args, **kwargs)
 
+
 # From pytorch/torch/utils/cpp_extension.py
 # https://github.com/pytorch/pytorch/blob/385165ec674b764eb42ffe396f98fadd08a513eb/torch/utils/cpp_extension.py#L24
 IS_WINDOWS = sys.platform == "win32"
+
 
 def _find_cuda_home():
     """Finds the CUDA install path."""
@@ -29,9 +32,7 @@ def _find_cuda_home():
         try:
             which = "where" if IS_WINDOWS else "which"
             with open(os.devnull, "w") as devnull:
-                nvcc = (
-                    subprocess.check_output([which, "nvcc"], stderr=devnull).decode().rstrip("\r\n")
-                )
+                nvcc = subprocess.check_output([which, "nvcc"], stderr=devnull).decode().rstrip("\r\n")
                 cuda_home = os.path.dirname(os.path.dirname(nvcc))
         except Exception:
             # Guess #3
@@ -49,6 +50,7 @@ def _find_cuda_home():
         print("CUDA not found, set CUDA_HOME environment variable")
         exit(1)
     return cuda_home
+
 
 def _get_cuda_info():
     cuda_home = _find_cuda_home()
@@ -69,7 +71,7 @@ def _get_cuda_info():
         os.environ["CC"] = centos_gcc8
         os.environ["CXX"] = centos_gcc8.replace("gcc", "g++")
 
-    cxx_args = ["-std=c++14"]
+    cxx_args = ["--std=c++17"]
     if IS_WINDOWS:
         cxx_args.append("/O2")
     else:
@@ -112,7 +114,6 @@ def _get_cuda_info():
         is_pit_cluster = any(cname in hostname for cname in pit_clusters)
 
         is_rsc_cluster = "rsc" in hostname
-
 
         if is_pit_cluster or is_rsc_cluster:
             print("Pittsburgh DGX cluster detected.")
@@ -166,6 +167,7 @@ def _get_cuda_info():
         "compute_caps": compute_caps,
     }
 
+
 if __name__ == "__main__":
     centos_gcc8 = "/opt/rh/devtoolset-8/root/usr/bin/gcc"
     if os.path.exists(centos_gcc8):
@@ -190,13 +192,10 @@ if __name__ == "__main__":
                 sources=[
                     "extensions/mvpraymarch/mvpraymarch.cpp",
                     "extensions/mvpraymarch/mvpraymarch_kernel.cu",
-                    "extensions/mvpraymarch/bvh.cu"
+                    "extensions/mvpraymarch/bvh.cu",
                 ],
-                include_dirs = [common_incdir],
-                extra_compile_args={
-                    "cxx":  cxx_args,
-                    "nvcc": nvcc_args
-                }
+                include_dirs=[common_incdir],
+                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
             CUDAExtension(
                 "extensions.integprior.integprior_ext",
@@ -204,11 +203,8 @@ if __name__ == "__main__":
                     "extensions/integprior/integprior.cpp",
                     "extensions/integprior/integprior_kernel.cu",
                 ],
-                include_dirs = [common_incdir, mvpraymarch_incdir],
-                extra_compile_args={
-                    "cxx":  cxx_args,
-                    "nvcc": nvcc_args
-                }
+                include_dirs=[common_incdir, mvpraymarch_incdir],
+                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
             CUDAExtension(
                 "extensions.primintersection.primintersection_ext",
@@ -216,11 +212,8 @@ if __name__ == "__main__":
                     "extensions/primintersection/primintersection.cpp",
                     "extensions/primintersection/primintersection_kernel.cu",
                 ],
-                include_dirs = [common_incdir, mvpraymarch_incdir],
-                extra_compile_args={
-                    "cxx":  cxx_args,
-                    "nvcc": nvcc_args
-                }
+                include_dirs=[common_incdir, mvpraymarch_incdir],
+                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
             CUDAExtension(
                 "extensions.computeraydirs.computeraydirs_ext",
@@ -228,11 +221,8 @@ if __name__ == "__main__":
                     "extensions/computeraydirs/computeraydirs.cpp",
                     "extensions/computeraydirs/computeraydirs_kernel.cu",
                 ],
-                include_dirs = [common_incdir],
-                extra_compile_args={
-                    "cxx":  cxx_args,
-                    "nvcc": nvcc_args
-                }
+                include_dirs=[common_incdir],
+                extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
             CppExtension(
                 "extensions.png_reader.png_reader_ext",
@@ -240,8 +230,8 @@ if __name__ == "__main__":
                     "extensions/png_reader/module.cpp",
                 ],
                 extra_link_args=["-flto"],
-                include_dirs=['src/zip_reader'],
-                extra_compile_args=cxx_args
+                include_dirs=["src/zip_reader"],
+                extra_compile_args=cxx_args,
             ),
         ],
         cmdclass={"build_ext": BuildExtension2},

@@ -8,3 +8,7 @@ assets/rsc-assets
 # Extensions
 extensions-mvp/*/build/**
 extensions-mvp/*/**.so
+
+# Compiled extension kernels
+build/*/**
+extensions/*/**.so
