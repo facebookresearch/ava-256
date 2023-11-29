@@ -7,8 +7,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from extensions.computeraydirs.computeraydirs import compute_raydirs
 from PIL import Image
+
+from extensions.computeraydirs.computeraydirs import compute_raydirs
 
 
 def color_normalize(src, dst):
@@ -99,7 +100,6 @@ class Autoencoder(nn.Module):
         # imagemask: Optional[torch.Tensor] = None,
         bg: Optional[torch.Tensor] = None,
         # segmentation: Optional[torch.Tensor] = None,
-        trainiter: int = -1,
         running_avg_scale: bool = False,
         gt_geo: Optional[torch.Tensor] = None,
         residuals_weight: float = 1.0,
@@ -126,7 +126,6 @@ class Autoencoder(nn.Module):
             imagevalid : torch.Tensor, optional [B]
             bg : torch.Tensor, optional [B, 3, H, W]
             renderoptions : dict Rendering/raymarching options (e.g., stepsize, whether to output debug images, etc.)
-            trainiter : int Training iteration number
             outputlist : list What values to return (e.g., image reconstruction, debug output)
 
         Returns:
@@ -180,7 +179,7 @@ class Autoencoder(nn.Module):
             dim=-1,
         )
 
-        # Compute ray directionss
+        # Compute ray directions
         raypos, raydir, tminmax = compute_raydirs(
             campos, camrot, focal, princpt, pixelcoords, self.raymarcher.volume_radius
         )

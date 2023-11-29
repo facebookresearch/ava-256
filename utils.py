@@ -14,6 +14,38 @@ from trimesh.triangles import points_to_barycentric
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
 
+def load_krt(path: str):
+    """Load a KRT file containing camera parameters
+    Args:
+        path: File path that contains the KRT information
+    Returns:
+        A dictionary with
+            'intrin'
+            'dist'
+            'extrin'
+    """
+    cameras = {}
+
+    with open(path, "r") as f:
+        while True:
+            name = f.readline()
+            if name == "":
+                break
+
+            intrin = [[float(x) for x in f.readline().split()] for i in range(3)]
+            dist = [float(x) for x in f.readline().split()]
+            extrin = [[float(x) for x in f.readline().split()] for i in range(3)]
+            f.readline()
+
+            cameras[name[:-1]] = {
+                "intrin": np.array(intrin),
+                "dist": np.array(dist),
+                "extrin": np.array(extrin),
+            }
+
+    return cameras
+
+
 def load_obj(path: Union[str, TextIO], return_vn: bool = False) -> ObjectType:
     """Load wavefront OBJ from file. See https://en.wikipedia.org/wiki/Wavefront_.obj_file for file format details
     Args:

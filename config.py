@@ -13,25 +13,19 @@
 # for change resolution : pass imagesize argument, reset downsample factor, and set subsample size (HEIGHT)
 #   in training mode: downsample factor: 2 more --> 1K H by 667 W --> subsample height : 384
 
+import json
 import os
 
 import numpy as np
 import torch
-import torch.nn as nn
 
 from utils import create_uv_baridx, load_obj
-
-if os.getenv("RSC_JOB_UUID", "NOTFOUND") == "NOTFOUND":
-    assert (False, "RSC_JOB_UUID NOT FOUND")
-
 
 # ablation esperiment hs its own holdout segment , camera control system, don't put anything on the following
 ###################################
 holdoutcams = []
 holdoutseg = []
 ####################################
-
-_additional_keyfilters = []
 
 
 def get_renderoptions():
@@ -423,3 +417,64 @@ class Render:
             return data.utils.ColCatDataset(camdataset, dataset)
         else:
             return dataset
+
+
+class ObjDict:
+    def __init__(self, entries):
+        self.add_entries_(entries)
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def values(self):
+        return self.__dict__.values()
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
+    def __delitem__(self, key):
+        return self.__dict__.__delitem__(key)
+
+    def __contains__(self, key):
+        return key in self.__dict__
+
+    def __repr__(self):
+        return self.__dict__.__repr__()
+
+    def __getattr__(self, attr):
+        if attr.startswith("__"):
+            return self.__getattribute__(attr)
+        if attr not in self.__dict__:
+            self.__dict__[attr] = ObjDict({})
+        return self.__dict__[attr]
+
+    def items(self):
+        return self.__dict__.items()
+
+    def __iter__(self):
+        return iter(self.items())
+
+    def add_entries_(self, entries, overwrite=True):
+        for key, value in entries.items():
+            if key not in self.__dict__:
+                if isinstance(value, dict):
+                    self.__dict__[key] = ObjDict(value)
+                else:
+                    self.__dict__[key] = value
+            else:
+                if isinstance(value, dict):
+                    self.__dict__[key].add_entries_(entries=value, overwrite=overwrite)
+                elif overwrite or self.__dict__[key] is None:
+                    self.__dict__[key] = value
+
+    def serialize(self):
+        return json.dumps(self, default=self.obj_to_dict, indent=4)
+
+    def obj_to_dict(self, obj):
+        return obj.__dict__
+
+    def get(self, key, default=None):
+        return self.__dict__.get(key, default)
