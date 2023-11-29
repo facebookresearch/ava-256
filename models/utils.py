@@ -1,7 +1,4 @@
 import math
-import operator
-from collections import OrderedDict
-from itertools import islice
 
 import numpy as np
 import torch

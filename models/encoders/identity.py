@@ -17,7 +17,7 @@ class IdentityEncoder(nn.Module):
         uv_bary: Union[torch.Tensor, np.ndarray],
         wsize=128,
     ):
-        """TODO(julieta) document params"""
+        """TODO(julieta) document params, specially warpsize and its effects"""
         super(IdentityEncoder, self).__init__()
 
         # Convert to torch.tensor if the arrays come in np format
