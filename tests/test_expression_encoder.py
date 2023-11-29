@@ -3,16 +3,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from models.encoders.expression import ExpressionEncoder, kl_loss_stable
+from models.encoders.expression import ExpressionEncoder
 from utils import create_uv_baridx, load_obj, make_closest_uv_barys
-
-
-def test_kl_loss():
-    n, d = 1, 128
-    loss = kl_loss_stable(torch.zeros(n, d), torch.ones(n, d))
-    # TODO(julieta) chec
-    # k if there is a way to get zero kl div loss
-    # assert loss == 0.``
 
 
 def create_uv_baridx2(vt, vi, vti, uvtri, bar):
@@ -37,7 +29,7 @@ def create_uv_baridx2(vt, vi, vti, uvtri, bar):
     }
 
 
-def test_encodersizes():
+def test_encoder_sizes():
     """Smoke test confirming expected sizes for the encoder"""
     # TODO(julieta) make a centralized file with asset names so we don't have to type them out every time
     # TODO(julieta) have not been able to reproduce the bary_img
@@ -79,12 +71,12 @@ def test_encodersizes():
 
     # Create expression encoder
     expression_encoder = ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
-    expr_code, losses = expression_encoder(verts, avgtex, neut_verts, neut_avgtex, set(["kldiv"]))
+    expr_code = expression_encoder(verts, avgtex, neut_verts, neut_avgtex)
 
-    assert expr_code["encoding"].shape == torch.Size([1, 16, 4, 4])
+    assert expr_code.shape == torch.Size([1, 64, 4, 4])
 
     # Create expression encoder with data2
     expression_encoder = ExpressionEncoder(uvdata2["uv_idx"], uvdata2["uv_bary"])
-    expr_code, losses = expression_encoder(verts, avgtex, neut_verts, neut_avgtex, set(["kldiv"]))
+    expr_code = expression_encoder(verts, avgtex, neut_verts, neut_avgtex)
 
-    assert expr_code["encoding"].shape == torch.Size([1, 16, 4, 4])
+    assert expr_code.shape == torch.Size([1, 64, 4, 4])
