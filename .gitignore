@@ -4,3 +4,7 @@ __pycache__
 *.jpg
 run/
 assets/rsc-assets
+
+# Extensions
+extensions-mvp/*/build/**
+extensions-mvp/*/**.so

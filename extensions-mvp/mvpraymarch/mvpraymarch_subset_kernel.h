@@ -27,7 +27,6 @@ __global__ void raymarch_subset_forward_kernel(
     int w = blockIdx.x * blockDim.x + threadIdx.x;
     int h = blockIdx.y * blockDim.y + threadIdx.y;
     int n = blockIdx.z;
-    bool validthread = (w < W) && (h < H) && (n<N);
 
     assert(nwarps == 0 || blockDim.x * blockDim.y / 32 <= nwarps);
     const int warpid = __shfl_sync(0xffffffff, (threadIdx.y * blockDim.x + threadIdx.x) / 32, 0);
