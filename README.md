@@ -33,3 +33,9 @@ north of 30MB
   * I have not been able to fully reproduce the pre-computed `bary_img`, see `pytest tests/test_expression_encoder.py` for my failed attempts. We should either get a consistent repro, or test that the newly-computed image produces reasonable results
   * `Trimesh` and friends is a long list of dependencies (`rtree`, `scipy`), consider rewriting the whole thing
 * We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)
+
+## Open questions
+
+* What does the structure for data look like?
+   * Needs to be something that allows people to download subset of the data efficiently (eg, just meshes)
+* Should we add support for FLAME?
