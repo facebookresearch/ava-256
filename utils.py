@@ -1,11 +1,10 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
 
 import numpy as np
 import torch as th
-
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 from rtree import Rtree  # noqa
-
 # from sklearn.neighbors import KDTree  # noqa
 from trimesh import Trimesh
 from trimesh.proximity import closest_point
@@ -14,7 +13,7 @@ from trimesh.triangles import points_to_barycentric
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
 
-def load_krt(path: str):
+def load_krt(path: Union[str, Path]):
     """Load a KRT file containing camera parameters
     Args:
         path: File path that contains the KRT information

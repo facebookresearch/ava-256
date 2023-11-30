@@ -1,13 +1,11 @@
 """
 Volumetric autoencoder (image -> encoding -> volume -> image)
 """
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from PIL import Image
 
 from extensions.computeraydirs.computeraydirs import compute_raydirs
 
@@ -41,12 +39,6 @@ class Autoencoder(nn.Module):
     def __init__(
         self,
         *,
-        vertmean: np.ndarray,
-        vertstd: np.ndarray,
-        texmean: np.ndarray,
-        texstd: np.ndarray,
-        imagemean: float,
-        imagestd: float,
         identity_encoder: nn.Module,
         expression_encoder: nn.Module,
         bottleneck: nn.Module,
@@ -65,15 +57,6 @@ class Autoencoder(nn.Module):
         self.raymarcher = raymarcher
         self.colorcal = colorcal
         self.bgmodel = bgmodel
-
-        # Register normalization stats
-        # TODO(julieta) should (de)normalization live outside of the model?
-        self.register_buffer("vertmean", torch.from_numpy(vertmean), persistent=False)
-        self.vertstd = vertstd
-        self.register_buffer("texmean", torch.from_numpy(texmean), persistent=False)
-        self.texstd = texstd
-        self.imagemean = imagemean
-        self.imagestd = imagestd
 
     # @profile
     def forward(
@@ -104,7 +87,7 @@ class Autoencoder(nn.Module):
         gt_geo: Optional[torch.Tensor] = None,
         residuals_weight: float = 1.0,
         output_set: Set[str] = set(),
-    ):
+    ) -> Dict[str, Optional[torch.Tensor]]:
         """
         Params
             camrot: [B, 3, 3] Rotation matrix of target view camera

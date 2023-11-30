@@ -168,6 +168,10 @@ class GeometryDecoder(nn.Module):
         primscaleresid = torch.exp(0.01 * mot[:, :, 6:9])
 
         # get geometry
+        # TODO(julieta) can we avoid this expansion that depends on the batch size?
+        # TODO(julieta) we predict a geometry image, then convert that to verts, then index into an image again
+        # in the DecoderAssembler. Does this mean that we cannot get zero error on geometry ever?
+        # Would it be better to predict the vertices directly?
         coords = self.coords.expand((geo.size(0), -1, -1, -1))
         geo = F.grid_sample(geo, coords, align_corners=False).mean(dim=3).permute(0, 2, 1)
 
