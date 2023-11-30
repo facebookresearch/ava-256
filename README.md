@@ -34,6 +34,8 @@ north of 30MB
   * `Trimesh` and friends is a long list of dependencies (`rtree`, `scipy`), consider rewriting the whole thing
 * We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)
 * Swap the current `extensions` for `extension-mvp`, which are taken from [the MVP repo](https://github.com/facebookresearch/mvp/tree/main/extensions).
+* Remove wuffs (`png_reader`) extension - I don't think it's used?
+
 ## Open questions
 
 * What does the structure for data look like?
