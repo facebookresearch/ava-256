@@ -2,58 +2,34 @@
 RSC dataloader. Need another one for reading from SSD/disk.
 """
 
-import os
-import sys
-import cv2
-cv2.setNumThreads(0)
-
-import einops
-import numpy as np
-import scipy.ndimage
-import torch.utils.data
-import torchvision
-import torch.nn.functional as F
-from PIL import Image
-import copy
-import hashlib as hlib
-from pathlib import Path
-import io
-
 import bisect
-from tqdm import tqdm
 import logging
 import logging.handlers
 import math
 import os
 import pickle
-import random
 import sys
-from typing import Any, Dict, List, Tuple, Set, Literal, Callable, Optional, Union, TypeVar
-
-import time
-import tempfile
-from tempfile import TemporaryDirectory
-
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union
+
+import einops
+import numpy as np
+import pandas as pd
+import torch.nn.functional as F
+import torch.utils.data
 from care.data.io import typed
 from care.strict.data.io.file_system.airstore_client import register_airstore_in_fsspec
-
-from data.tiled_png_utils import (
-    process_dataset_metadata,
-    generate_transform,
-    process_tile_png_sample,
-)
-
-# Use cfg node as a quick but dirty trick for fast prototyping
-from yacs.config import CfgNode
-import pandas as pd
-from torch.utils.data.dataloader import default_collate
-
+from PIL import Image
 from torch import multiprocessing as mp
+from torch.utils.data.dataloader import default_collate
+from tqdm import tqdm
+
+from data.tiled_png_utils import generate_transform, process_dataset_metadata, process_tile_png_sample
+
 mp.set_start_method("spawn", force=True)
 
-logger = logging.getLogger('ghsv2_airstore_dataset')
+logger = logging.getLogger("ghsv2_airstore_dataset")
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -64,6 +40,8 @@ logger.addHandler(stdout_handler)
 
 
 T = TypeVar("T")
+
+
 def none_collate_fn(items: List[T]) -> Optional[torch.Tensor]:
     """Modified form of :func:`torch.utils.data.dataloader.default_collate`
     that will strip samples from the batch if they are ``None``."""
@@ -74,6 +52,7 @@ def none_collate_fn(items: List[T]) -> Optional[torch.Tensor]:
 @dataclass(frozen=True)
 class MugsyCapture:
     """Unique identifier for a Mugsy capture"""
+
     mcd: str  # Mugsy capture date in 'yyyymmdd' format, eg `20210223`
     mct: str  # Mugsy capture time in 'hhmm' format, eg `1023`
     sid: str  # Subject ID, three letters and three numbers, eg `avw368`
@@ -82,6 +61,7 @@ class MugsyCapture:
 
 # Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
 os.environ["RSC_AVATAR_METADATA_PATH"] = "/uca/uca2-meta/"
+
 
 class MultiCaptureDataset(torch.utils.data.Dataset):
     """
@@ -145,7 +125,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         # Stdev
         if N == 1:
             # TODO(julieta) probably wrong?!
-            texvar = np.mean((texmean - np.mean(texmean, axis=0, keepdims=True))**2)
+            texvar = np.mean((texmean - np.mean(texmean, axis=0, keepdims=True)) ** 2)
         else:
             texvar = 0.0
             for capture, dataset in self.single_capture_datasets.items():
@@ -196,7 +176,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         sample = self.single_capture_datasets[capture][sample_idx]
 
         if sample is not None:
-            sample['idindex'] = dataset_idx
+            sample["idindex"] = dataset_idx
 
         return sample
 
@@ -243,8 +223,12 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             self.assets_table_name = f"codec_avatar_300_relit_cid_{capture.sid.lower()}_{capture.mcd}_{capture.mct}_uca2_v1_0_assets_no_user_data"
         else:
             self.metadata_dir = f"/uca/uca2-meta/{meta_folder_name}"
-            self.images_table_name = f"codec_avatar_{capture.sid.lower()}_{capture.mcd}_{capture.mct}_mugsy_frames_no_user_data"
-            self.assets_table_name = f"codec_avatar_{capture.sid.lower()}_{capture.mcd}_{capture.mct}_uca2_v1_0_assets_no_user_data"
+            self.images_table_name = (
+                f"codec_avatar_{capture.sid.lower()}_{capture.mcd}_{capture.mct}_mugsy_frames_no_user_data"
+            )
+            self.assets_table_name = (
+                f"codec_avatar_{capture.sid.lower()}_{capture.mcd}_{capture.mct}_uca2_v1_0_assets_no_user_data"
+            )
 
         assert os.path.exists(self.metadata_dir), f"Meta data directory not found at: {self.metadata_dir}"
 
@@ -293,10 +277,10 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         # Pre-load krts in user-friendly dicts
         self.campos, self.camrot, self.focal, self.princpt = {}, {}, {}, {}
         for cam, krt in krt_dicts.items():
-            self.campos[cam] = (-np.dot(krt['extrin'][:3, :3].T, krt['extrin'][:3, 3])).astype(np.float32)
-            self.camrot[cam] = (krt['extrin'][:3, :3]).astype(np.float32)
-            self.focal[cam] = (np.diag(krt['intrin'][:2, :2]) / downsample).astype(np.float32)
-            self.princpt[cam] = (krt['intrin'][:2, 2] / downsample).astype(np.float32)
+            self.campos[cam] = (-np.dot(krt["extrin"][:3, :3].T, krt["extrin"][:3, 3])).astype(np.float32)
+            self.camrot[cam] = (krt["extrin"][:3, :3]).astype(np.float32)
+            self.focal[cam] = (np.diag(krt["intrin"][:2, :2]) / downsample).astype(np.float32)
+            self.princpt[cam] = (krt["intrin"][:2, 2] / downsample).astype(np.float32)
 
         self.camera_map = dict()
         for i, cam in enumerate(self.cameras):
@@ -317,19 +301,25 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         texmean = np.asarray(Image.open(os.path.join(minisis_folder, "codec", "tex_mean.png")), dtype=np.float32)
         self.texmean = einops.rearrange(texmean, "h w c -> c h w").astype(np.float32).copy("C")
         self.texstd = float(np.genfromtxt(os.path.join(minisis_folder, "codec", "tex_var.txt")) ** 0.5)
-        self.vertmean = np.fromfile(os.path.join(minisis_folder, "codec", "vert_mean.bin"), dtype=np.float32).reshape(-1, 3)
+        self.vertmean = np.fromfile(os.path.join(minisis_folder, "codec", "vert_mean.bin"), dtype=np.float32).reshape(
+            -1, 3
+        )
         self.vertstd = float(np.genfromtxt(os.path.join(minisis_folder, "codec", "vert_var.txt")) ** 0.5)
 
         # Neutral conditioning
         neut_framelist = self.framelist.loc[self.framelist["seg_id"] == "EXP_neutral_peak"].values.tolist()
         # vlist, tlist = [], []
         for neut_seg, neut_frame in neut_framelist:
-            verts = np.fromfile(f"{minisis_folder}/tracked_mesh/{neut_seg}/{neut_frame:06d}.bin", dtype=np.float32).reshape(-1, 3)
+            verts = np.fromfile(
+                f"{minisis_folder}/tracked_mesh/{neut_seg}/{neut_frame:06d}.bin", dtype=np.float32
+            ).reshape(-1, 3)
             # verts = (verts - self.vertmean) / self.vertstd
 
-            # Didn't find significant speed difference between cv2 and PIL
-            tex = np.asarray(Image.open(f"{minisis_folder}/unwrapped_uv_1024/{neut_seg}/average/{neut_frame:06d}.png"), dtype=np.uint8)
-            tex = einops.rearrange(tex, "h w c -> c w h").astype(np.float32)
+            tex = np.asarray(
+                Image.open(f"{minisis_folder}/unwrapped_uv_1024/{neut_seg}/average/{neut_frame:06d}.png"),
+                dtype=np.uint8,
+            )
+            tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
             # tex = (tex - self.texmean) / self.texstd
 
             # vlist.append(verts)
@@ -348,7 +338,9 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         # self.neut_vert = vlist[0]
 
         # Load background images from NFS
-        self.bg_model_path = f"{self.metadata_dir}/ca2/learn_bkg_per_camera/{capture.sid.upper()}_{capture.mcd}--0000_codec/"
+        self.bg_model_path = (
+            f"{self.metadata_dir}/ca2/learn_bkg_per_camera/{capture.sid.upper()}_{capture.mcd}--0000_codec/"
+        )
         # for cam_id in self.cameras:
         #     bg_img = Image.open(f"{bg_model_path}/bg_{cam_id}.png")
         #     bg_img = einops.rearrange(np.asarray(bg_img), 'h w c -> c h w').astype(np.float32)  # bg image is current in 1024x667 resolution
@@ -360,8 +352,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         register_airstore_in_fsspec()
         self.is_setup = True
 
-    def fetch_airstore_data(self, frame_id: str, camera_id: str) -> Optional[Dict[str, np.ndarray]]:
-
+    def fetch_airstore_data(self, frame_id: str, camera_id: str) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
         # NOTE(julieta) the rows that get pulled from the assets table are documented at
         # https://www.internalfb.com/intern/wiki/RL/RL_Research/Pittsburgh/Engineering/Onboarding/Avatar_RSC_Manual/Supported_Datasets/Fully-Lit_CA2/
         #
@@ -383,7 +374,6 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             return None
 
         try:
-
             # Camera image
             url = f"airstoreds://{self.images_table_name}/frame?frame_id={frame_id}&camera={camera_id}"  # noqa: B950
             img_tiled_bytes = typed.load(url, extension="bin")
@@ -396,7 +386,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             verts = typed.load(url, extension="npbin", dtype=np.float32).reshape(-1, 3)
 
             # Average texture
-            url = f"airstoreds://{self.assets_table_name}/unwrapped_avgtex?frame_id={frame_id}" #&camera=average"
+            url = f"airstoreds://{self.assets_table_name}/unwrapped_avgtex?frame_id={frame_id}"  # &camera=average"
             avgtex = typed.load(url, extension="png")
             avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
 
@@ -415,7 +405,9 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         bg_img = Image.open(f"{self.bg_model_path}/bg_{camera_id}.png")
         bg_img = bg_img.resize((self.width, self.height))
         bg_img = np.asarray(bg_img)[:, :, :3]  # drop alpha channel
-        bg_img = einops.rearrange(bg_img, 'h w c -> c h w').astype(np.uint8)  # bg image is current in 1024x667 resolution
+        bg_img = einops.rearrange(bg_img, "h w c -> c h w").astype(
+            np.uint8
+        )  # bg image is current in 1024x667 resolution
 
         # pixelcoords
         px, py = np.meshgrid(np.arange(self.width).astype(np.float32), np.arange(self.height).astype(np.float32))
@@ -444,11 +436,10 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             # ididx and camidx
             idindex=0,
             camindex=self.camera_map[camera_id],  # TODO handle for multi-id
-            bg=bg_img, # background image
+            bg=bg_img,  # background image
         )
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-
         try:
             frame = self.frames[idx // len(self.frames)]
             camera = self.cameras[idx % len(self.cameras)]

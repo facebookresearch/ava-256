@@ -5,24 +5,16 @@ TODO(julieta) make sure this works on windows
 TODO(julieta) make sure this works on any POSIX
 """
 
-import os
-import sys
-
-import cv2
-
-cv2.setNumThreads(0)
-
 import bisect
 import logging
 import logging.handlers
 import math
 import os
-import pickle
 import sys
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import einops
 import numpy as np
@@ -33,7 +25,6 @@ from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
-from data.tiled_png_utils import generate_transform, process_dataset_metadata, process_tile_png_sample
 from utils import load_krt
 
 mp.set_start_method("spawn", force=True)
@@ -81,11 +72,13 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         captures: List[MugsyCapture],
+        directories: List[str],
         downsample: int = 4,
     ):
         super().__init__()
 
         self.captures = captures
+        self.dirs = directories
         self.downsample = downsample
         self.height, self.width = (4096 // downsample, 2668 // downsample)
 
@@ -94,8 +87,8 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
 
         # Create many single-capture datasets
         self.single_capture_datasets = OrderedDict()
-        for capture in tqdm(captures, desc="Loading single id captures"):
-            self.single_capture_datasets[capture] = SingleCaptureDataset(capture, downsample)
+        for capture, dir in tqdm(zip(captures, directories), desc="Loading single id captures"):
+            self.single_capture_datasets[capture] = SingleCaptureDataset(capture, dir, downsample)
 
         # Dataset lengths
         self.cumulative_sizes = np.cumsum([len(x) for x in self.single_capture_datasets.values()])
@@ -246,8 +239,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
 
         # Load frame list; ie, (segment, frame) pairs
         frame_list_path = self.dir / "frame_list.txt"
-        self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], delim_whitespace=True)
-        self.frames = sorted(np.unique(self.framelist["frame_id"].values))
+        self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, delim_whitespace=True)
 
         # Normalization stats
         texmean = np.asarray(Image.open(self.dir / "tex_mean.png"), dtype=np.float32)
@@ -257,7 +249,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         self.vertstd = float(np.genfromtxt(self.dir / "vert_var.txt") ** 0.5)
 
         # Neutral conditioning
-        # neutral_segment = "EXP_neutral_peak"  # TODO(julieat) choose from a list of potential neutral segments
+        # neutral_segment = "EXP_neutral_peak"  # TODO(julieta) choose from a list of potential neutral segments
         neutral_segment = "E001_Neutral_Eyes_Open"
         neut_framelist = self.framelist.loc[self.framelist["seg_id"] == neutral_segment].values.tolist()
         # vlist, tlist = [], []
@@ -272,7 +264,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
                 self.dir / f"/unwrapped_uv_1024/{neut_seg}/average/{neut_frame:06d}.png",
                 dtype=np.uint8,
             )
-            tex = einops.rearrange(tex, "h w c -> c w h").astype(np.float32)
+            tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
 
             # vlist.append(verts)
             # tlist.append(tex)
@@ -304,42 +296,36 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         #     self.bg_imgs[cam_id] = bg_img
         # print(f"Loaded background images in {time.time() - st} seconds")
 
-    def fetch_airstore_data(self, frame_id: str, camera_id: str) -> Optional[Dict[str, np.ndarray]]:
+    def fetch_data_from_disk(
+        self, segment: str, frame_id: str, camera_id: str
+    ) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
         try:
             # Camera image
-            url = f"airstoreds://{self.images_table_name}/frame?frame_id={frame_id}&camera={camera_id}"  # noqa: B950
-            img_tiled_bytes = typed.load(url, extension="bin")
-            img = self.cambyte_transforms[camera_id](img_tiled_bytes)
+            path = self.dir / "images" / segment / camera_id / f"{frame_id}.png"
+            img = np.asarray(Image.open(path))
             img = einops.rearrange(img, "h w c -> c h w")
             img = img.astype(np.float32)
 
             # Mesh
-            url = f"airstoreds://{self.assets_table_name}/mesh?frame_id={frame_id}&camera={camera_id}"
-            verts = typed.load(url, extension="npbin", dtype=np.float32).reshape(-1, 3)
+            path = self.dir / "tracked_mesh" / segment / camera_id / f"{frame_id}.bin"
+            verts = np.fromfile(path, dtype=np.float32).reshape(-1, 3)
 
             # Average texture
-            url = f"airstoreds://{self.assets_table_name}/unwrapped_avgtex?frame_id={frame_id}"  # &camera=average"
-            avgtex = typed.load(url, extension="png")
-            avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
+            path = self.dir / "unwrapped_uv_1024" / segment / camera_id / f"{frame_id}.png"
+            avgtex = np.asarray(Image.open(path))
+            img = einops.rearrange(img, "h w c -> c h w")
+            img = img.astype(np.float32)
 
-            # Headpose
-            url = f"airstoreds://{self.assets_table_name}/headpose?frame_id={frame_id}&camera={camera_id}"
-            headpose = typed.load(url, extension="nptxt", dtype=np.float32)
+            # Head pose (global transform of the person's head)
+            path = self.dir / "tracked_mesh" / segment / camera_id / f"{frame_id}_transform.txt"
+            headpose = np.loadtxt(path, dtype=np.float32)
 
             if any(i is None for i in (img, verts, avgtex, headpose)):
-                raise ValueError(f"Some of fetched data is None for {self.assets_table}-{frame_id}-{camera_id}")
+                raise ValueError(f"Some of fetched data is None for {segment}-{frame_id}-{camera_id}")
 
         except Exception as e:
             logger.error(f"Error loading airstore data: {e}")
             return None
-
-        # Background image loading on-the-fly
-        bg_img = Image.open(f"{self.bg_model_path}/bg_{camera_id}.png")
-        bg_img = bg_img.resize((self.width, self.height))
-        bg_img = np.asarray(bg_img)[:, :, :3]  # drop alpha channel
-        bg_img = einops.rearrange(bg_img, "h w c -> c h w").astype(
-            np.uint8
-        )  # bg image is current in 1024x667 resolution
 
         # pixelcoords
         px, py = np.meshgrid(np.arange(self.width).astype(np.float32), np.arange(self.height).astype(np.float32))
@@ -349,40 +335,37 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             image=img,
             verts=(verts - self.vertmean) / self.vertstd,
             avgtex=(avgtex - self.texmean) / self.texstd,
-            # headpose=headpose,
+            headpose=headpose,
             frameid=frame_id,
             cameraid=camera_id,
-            # # id cond info
-            # neut_verts=(self.neut_vert - self.vertmean) / self.vertstd,
-            # neut_avgtex=(self.neut_avgtex - self.texmean) / self.texstd,
-            # # krt info
-            # campos=np.dot(headpose[:3, :3].T, self.campos[camera_id] - headpose[:3, 3]),
-            # camrot=np.dot(headpose[:3, :3].T, self.camrot[camera_id].T).T,
-            # focal=self.focal[camera_id],
-            # princpt=self.princpt[camera_id],
-            # modelmatrix=np.eye(4, dtype=np.float32),
-            # validinput=True,
-            # pixelcoords=pixelcoords,
+            segment=segment,
+            # id cond info
+            neut_verts=(self.neut_vert - self.vertmean) / self.vertstd,
+            neut_avgtex=(self.neut_avgtex - self.texmean) / self.texstd,
+            # krt info
+            campos=np.dot(headpose[:3, :3].T, self.campos[camera_id] - headpose[:3, 3]),
+            camrot=np.dot(headpose[:3, :3].T, self.camrot[camera_id].T).T,
+            focal=self.focal[camera_id],
+            princpt=self.princpt[camera_id],
+            modelmatrix=np.eye(4, dtype=np.float32),
+            validinput=True,
+            pixelcoords=pixelcoords,
             # # TODO(julieta) use mask as in previous dataset
-            # imagemask=np.ones((1, self.height, self.width), dtype=np.float32),
-            # # ididx and camidx
-            # idindex=0,
-            # camindex=self.camera_map[camera_id],  # TODO handle for multi-id
-            # bg=bg_img,  # background image
+            imagemask=np.ones((1, self.height, self.width), dtype=np.float32),
+            # ididx and camidx
+            idindex=0,
+            camindex=self.camera_map[camera_id],  # TODO handle for multi-id
         )
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        try:
-            frame = self.frames[idx // len(self.frames)]
-            camera = self.cameras[idx % len(self.cameras)]
-        except IndexError as e:
-            print(f"{idx=}, {len(self.frames)=}, {len(self.cameras)=}")
-            raise e
-
-        return self.fetch_airstore_data(str(frame), camera)
+    def __getitem__(self, idx: int) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
+        segment_and_frame = self.framelist.iloc[idx]
+        segment: str = segment_and_frame.seg_id
+        frame: str = segment_and_frame.frame_id
+        camera = self.cameras[idx % len(self.cameras)]
+        return self.fetch_data_from_disk(segment, frame, camera)
 
     def __len__(self):
-        return len(self.cameras) * len(self.frames)
+        return len(self.framelist)
 
     ### Methods added for compat with previous version of dataset. Might want to revisit these
     def get_allcameras(self) -> Set[str]:
