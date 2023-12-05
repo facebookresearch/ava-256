@@ -313,8 +313,8 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             # Average texture
             path = self.dir / "unwrapped_uv_1024" / segment / camera_id / f"{frame_id}.png"
             avgtex = np.asarray(Image.open(path))
-            img = einops.rearrange(img, "h w c -> c h w")
-            img = img.astype(np.float32)
+            avgtex = einops.rearrange(avgtex, "h w c -> c h w")
+            avgtex = avgtex.astype(np.float32)
 
             # Head pose (global transform of the person's head)
             path = self.dir / "tracked_mesh" / segment / camera_id / f"{frame_id}_transform.txt"

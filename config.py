@@ -57,7 +57,7 @@ def get_autoencoder(dataset):
     objpath = f"{apath}/geotextop.obj"
 
     dotobj = load_obj(objpath)
-    v, vt, vi, vti = dotobj["v"], dotobj["vt"], dotobj["vi"], dotobj["vti"]
+    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
     vt = np.array(vt, dtype=np.float32)
     vi = np.array(vi, dtype=np.int32)
     vti = np.array(vti, dtype=np.int32)
@@ -88,55 +88,36 @@ def get_autoencoder(dataset):
         vt,
         vi,
         vti,
-        vertmean,
-        vertstd,
+        vertmean=vertmean,
+        vertstd=vertstd,
         volradius=volradius,
         nprims=128 * 128,
         primsize=(8, 8, 8),
-        postrainstart=100,
     )
 
-    # volsampler = volsamplerlib.VolSampler()
-    # raymarcher = raymarcherlib.Raymarcher(volradius=volradius)
     config = ObjDict(
         {"render": {"raymarcher_options": {"volume_radius": volradius, "chlast": False}}}
     )  ################## change to true for fast rendering?
     raymarcher = raymarcherlib.Raymarcher(config)
 
     bgmodel = bglib.BackgroundModelSimple(len(allcameras), len(dataset.identities))
-    # bgmodel = bglib.BGModel(len(dataset.identities), width, height, allcameras, trainstart=0, bgdict=False)
     ae = aemodel.Autoencoder(
-        dataset,
-        id_encoder,
-        expression_encoder,
-        bottleneck,
-        decoder,
-        raymarcher,
-        colorcal,
-        bgmodel,
-        encoderinputs=["verts", "avgtex", "neut_verts", "neut_avgtex"],
-        topology={"vt": vt, "vi": vi, "vti": vti},
-        imagemean=100.0,
-        imagestd=25.0,
-        # imagemean=0.,
-        # imagestd=1.,
-        use_vgg=False,
+        identity_encoder=id_encoder,
+        expression_encoder=expression_encoder,
+        bottleneck=bottleneck,
+        decoder_assembler=decoder,
+        raymarcher=raymarcher,
+        colorcal=colorcal,
+        bgmodel=bgmodel,
     )
 
     # DO NOT RUN VGG AT ALL and remove vgg in loss_weight for ABLATION TEST : @@@@
-    if ae.id_encoder is not None:
-        print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
-    else:
-        print("id_encoder params: 0")
+    print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
     print(f"encoder params: {sum(p.numel() for p in ae.expr_encoder.parameters() if p.requires_grad):_}")
     print(f"decoder params: {sum(p.numel() for p in ae.decoder_assembler.parameters() if p.requires_grad):_}")
     print(f"colorcal params: {sum(p.numel() for p in ae.colorcal.parameters() if p.requires_grad):_}")
     print(f"bgmodel params: {sum(p.numel() for p in ae.bgmodel.parameters() if p.requires_grad):_}")
     print(f"total params: {sum(p.numel() for p in ae.parameters() if p.requires_grad):_}")
-
-    # print()
-    # print(f"rgb decoder params: {sum(p.numel() for p in ae.decoder.rgbdec.parameters() if p.requires_grad):_}")
-    # print(f"geo decoder params: {sum(p.numel() for p in ae.decoder.geodec.parameters() if p.requires_grad):_}")
 
     return ae
 

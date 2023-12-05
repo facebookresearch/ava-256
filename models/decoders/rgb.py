@@ -84,8 +84,8 @@ class RGBDecoder(nn.Module):
 
     def forward(
         self,
-        ex_enc: torch.Tensor,
-        id_enc: torch.Tensor,
+        ex_code: torch.Tensor,
+        id_code: torch.Tensor,
         id_biases: List[torch.Tensor],
         view: Optional[torch.Tensor],
     ) -> torch.Tensor:
@@ -97,8 +97,8 @@ class RGBDecoder(nn.Module):
             view: [N, 3] View direction that the decoder might use to model view-dependent effects
         """
 
-        z = self.encmod(ex_enc).view(-1, 16, 4, 4)
-        x = torch.cat([z, id_enc], dim=1) if id_enc is not None else z
+        z = self.encmod(ex_code).view(-1, 16, 4, 4)
+        x = torch.cat([z, id_code], dim=1) if id_code is not None else z
 
         if self.viewcond:
             v = self.viewmod(view).view(-1, 8, 4, 4)
