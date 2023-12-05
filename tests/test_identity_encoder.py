@@ -60,8 +60,8 @@ def test_identity_encoder_sizes():
 
     # Load real verts and an average texture
     verts = torch.from_numpy(np.fromfile("assets/021924.bin", dtype=np.float32).reshape(1, -1, 3))
-    avgtex = np.array(Image.open("assets/021924.png")).astype(np.float32)
-    avgtex = torch.from_numpy(einops.rearrange(avgtex, "H W C -> 1 C H W"))
+    avgtex = np.array(Image.open("assets/021924_avgtex.png")).astype(np.float32)
+    avgtex = torch.from_numpy(einops.rearrange(avgtex, "h w c -> 1 c h w"))
 
     # fd-data -- SAME as in RSC
     uvpath = "assets/rsc-assets/fd-data/"
@@ -70,9 +70,10 @@ def test_identity_encoder_sizes():
     barfiles = [f"{uvpath}/uv_bary{i}_{resolution}_orig.txt" for i in range(3)]
     uvdata = create_uv_baridx("assets/face_topology.obj", trifile, barfiles)
 
-    # Create expression encoder
+    # Create identity encoder
     identity_encoder = IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
-    encoder_outs = identity_encoder(verts, avgtex)
+    with torch.no_grad():
+        encoder_outs = identity_encoder(verts, avgtex)
 
     assert encoder_outs["z_geo"].shape == torch.Size([1, 16, 4, 4])
     assert encoder_outs["z_tex"].shape == torch.Size([1, 16, 4, 4])
