@@ -123,8 +123,8 @@ if __name__ == "__main__":
 
     # Training hyperparams.
     parser.add_argument("--maxiter", type=int, default=10_000_000, help="maximum number of iterations")
-    parser.add_argument("--num_worker", type=int, default=4, help="number of dataloader workers")
-    parser.add_argument("--batchsize", type=int, default=4, help="Batch size per GPU to use")
+    parser.add_argument("--num_workers", type=int, default=4, help="number of dataloader workers")
+    parser.add_argument("--batchsize", type=int, default=1, help="Batch size per GPU to use")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="Learning rate passed as it to the optimizer")
     parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
     parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
@@ -189,22 +189,23 @@ if __name__ == "__main__":
     # TODO(julieta) get the number of workers from the command line
     numworkers = args.num_workers
 
+    enableddp = False
+
     if args.worldsize > 1:
         logging.info(" INIT DDP RANK {}  WSIZE {}  URL {}".format(args.rank, args.worldsize, disturl))
         dist.init_process_group(backend="nccl", init_method=disturl, world_size=args.worldsize, rank=args.rank)
         logging.info(" distributed training group is initialized at rank : {}".format(args.rank))
 
-    allmembers = None
-    loss_quorum = None
-    allmembers = dist.new_group(range(worldsize))
-    loss_quorum = torch.tensor([1]).cuda()
+        allmembers = None
+        loss_quorum = None
+        allmembers = dist.new_group(range(worldsize))
+        loss_quorum = torch.tensor([1]).cuda()
+        enabledd = True
 
     # load config
     starttime = time.time()
     experconfig = import_module(args.experconfig, "config")
-    unparsed_args = {k: v for k, v in vars(args).items() if k not in parsed}
-    logging.info(f"Unparsed args: {unparsed_args}")
-    profile = getattr(experconfig, args.profile)(**unparsed_args)
+    profile = getattr(experconfig, args.profile)()
     if not args.noprogress:
         progressprof = experconfig.Progress()
 
@@ -217,41 +218,32 @@ if __name__ == "__main__":
     starttime = time.time()
 
     # Load
-    nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
-    nr_captures = [
-        MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
-        for _, row in nr_captures.iterrows()
-    ]
+    if args.dataset == "mugsy":
+        nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
+        nr_captures = [
+            MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
+            for _, row in nr_captures.iterrows()
+        ]
+        r_captures = pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
+        r_captures = [
+            MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=True)
+            for _, row in r_captures.iterrows()
+        ]
 
-    r_captures = pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
-    r_captures = [
-        MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=True)
-        for _, row in r_captures.iterrows()
-    ]
+        captures = nr_captures + r_captures
 
-    captures = nr_captures + r_captures
+        train_captures = captures[: args.nids]
+        train_captures = np.array_split(train_captures, worldsize)[args.rank]
+        dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
+    elif args.dataset == "ava":
+        # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
+        train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
+        train_dirs = ["/home/julietamartinez/src/multiface/mini_dataset/m--20180227--0000--6795937--GHS"]
+        dataset = AvaMultiCaptureDataset(train_captures, train_dirs)
+    else:
+        raise ValueError(f"Unsupported dataset: {args.dataset}")
 
-    train_captures = captures[: args.nids]
-    train_captures = np.array_split(train_captures, worldsize)[args.rank]
-    dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
-
-    logging.info("DS SET UP IS DONE  -- number of workers : {} -- using configfile ings ".format(numworkers))
-
-    logging.info(
-        " DL argument : enable_deterministic {}, disable_shuffle_air : {}".format(
-            args.enabledeterministic, args.disableshuffle
-        )
-    )
-    # torch.utils.data.DataLoader
-    # dataloader = airdl.DataLoader(dataset,
-    logging.info("[dl-refactor] dataloader created with torch.utils.data.DataLoader class")
-
-    evalpoints = list()
     maxiter = args.maxiter  # that ought to be enough for anyone
-
-    for i in range(maxiter // 200):
-        evalpoints.append(i * 200)
-
     logging.info(" maxiter :  {}, batchsize: {}".format(maxiter, batchsize))
 
     # dummysampler = AirstoreDummySampler(dataset)
@@ -280,7 +272,7 @@ if __name__ == "__main__":
 
     # build autoencoder
     starttime = time.time()
-    ae = profile.get_autoencoder(dataset)
+    ae = profile.get_autoencoder(dataset, assetpath="/home/julietamartinez/src/oss-uca1/assets/rsc-assets/")
     ae = ae.to("cuda").train()
 
     iternum = 0
@@ -291,9 +283,7 @@ if __name__ == "__main__":
         ae.encoder = torch.nn.parallel.DistributedDataParallel(ae.encoder, device_ids=[0], find_unused_parameters=False)
 
     optim_type = "adam"
-    _, optim = gen_optimizer(
-        ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, encoder_lr=args.encoder_lr
-    )
+    _, optim = gen_optimizer(ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger)
 
     logging.info("Autoencoder instantiated ({:.2f} s)".format(time.time() - starttime))
 
@@ -314,36 +304,38 @@ if __name__ == "__main__":
 
     perf_stats = {}
 
-    outputlist = profile.get_outputlist() if hasattr(profile, "get_outputlist") else []
+    output_set = profile.get_output_set()
 
     # NOTE(julieta) We use this list exclusively for "in" tests, so a set is more fitting. Consider changing the name
-    outputlist = set(outputlist)
-    logging.info(" OUTPUT LIST :{}".format(outputlist))
-    logging.info("NO ABLATION EXPERIMENT")
+    output_set = set(output_set)
+    logging.info(" OUTPUT LIST :{}".format(output_set))
 
-    # while True:
     for data in dataloader:
         if data is None:
             continue
 
         iter_start_time = time.time()
+        cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
 
-        # data = None
-
-        cudadata = None
-
-        m1 = data["frameid"]
-        m2 = data["cameraid"]
-
-        cudadata = tocuda(data)
-
-        output, losses = ae(
-            trainiter=iternum,
-            outputlist=outputlist,
-            losslist=lossweights.keys(),
-            **cudadata,
-            **(profile.get_ae_args() if hasattr(profile, "get_ae_args") else {}),
+        output = ae(
+            cudadata["camrot"],
+            cudadata["campos"],
+            cudadata["focal"],
+            cudadata["princpt"],
+            cudadata["modelmatrix"],
+            cudadata["avgtex"],
+            cudadata["verts"],
+            cudadata["neut_avgtex"],
+            cudadata["neut_verts"],
+            cudadata["pixelcoords"],
+            cudadata["idindex"],
+            cudadata["camindex"],
+            output_set=output_set,
+            # **cudadata,
         )
+
+        # TODO(julieta) compute losses
+        losses = {}
 
         # compute final loss
         loss = sum(
@@ -395,17 +387,8 @@ if __name__ == "__main__":
         iter_total_time = time.time() - iter_start_time
 
         # print progress
-        if iternum < 10000:
-            if iternum % 100 == 0:  #  and args.rank == 0 :
-                writer.batch(
-                    iternum,
-                    iternum * batchsize + torch.arange(0),
-                    f"{outpath}/progress_{iternum}.jpg",
-                    **cudadata,
-                    **output,
-                )
-        else:
-            if iternum % 1000 == 0:  # and args.rank == 0 :
+        if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
+            if args.rank == 0:
                 writer.batch(
                     iternum,
                     iternum * batchsize + torch.arange(0),

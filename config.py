@@ -15,6 +15,7 @@
 
 import json
 import os
+from typing import Set
 
 import numpy as np
 import torch
@@ -32,7 +33,7 @@ def get_renderoptions():
     return dict(dt=1.0)
 
 
-def get_autoencoder(dataset):
+def get_autoencoder(dataset, assetpath: str):
     import torch
     import torch.nn as nn
 
@@ -52,9 +53,7 @@ def get_autoencoder(dataset):
     print("@@@ Get autoencoder ABLATION CONFIG FILE : lenth of data set : {}".format(len(dataset.identities)))
 
     colorcal = colorcalib.Colorcal2(len(dataset.get_allcameras()), len(dataset.identities))
-    # apath= os.getenv('RSC_AVATAR_RSCASSET_PATH')
-    apath = "/checkpoint/avatar/jinkyuk/rsc-assets"
-    objpath = f"{apath}/geotextop.obj"
+    objpath = f"{assetpath}/geotextop.obj"
 
     dotobj = load_obj(objpath)
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
@@ -69,8 +68,8 @@ def get_autoencoder(dataset):
 
     # load per-textel triangulation indices
     resolution = 1024
-    geofile = f"{apath}/retop.obj"
-    uvpath = f"{apath}/fd-data/"
+    geofile = f"{assetpath}/retop.obj"
+    uvpath = f"{assetpath}/fd-data/"
     trifile = f"{uvpath}/uv_tri_{resolution}_orig.txt"
     barfiles = [f"{uvpath}/uv_bary{i}_{resolution}_orig.txt" for i in range(3)]
     uvdata = create_uv_baridx(geofile, trifile, barfiles)
@@ -124,11 +123,11 @@ def get_autoencoder(dataset):
 
 # profiles
 class Train:
-    def get_autoencoder(self, dataset):
-        return get_autoencoder(dataset)
+    def get_autoencoder(self, dataset, assetpath: str = "/checkpoint/avatar/jinkyuk/rsc-assets"):
+        return get_autoencoder(dataset, assetpath)
 
-    def get_outputlist(self):
-        return ["irgbrec", "irgbsqerr", "sampledimg"]
+    def get_output_set(self) -> Set[str]:
+        return set(["irgbrec", "irgbsqerr", "sampledimg"])
 
     def get_ae_args(self):
         return dict(renderoptions=get_renderoptions())
@@ -295,7 +294,7 @@ class ProgressWriter:
 class Progress:
     batchsize = 4
 
-    def get_outputlist(self):
+    def get_output_set(self):
         return ["irgbrec", "bg"]
 
     def get_ae_args(self):

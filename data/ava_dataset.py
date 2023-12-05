@@ -25,6 +25,7 @@ from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
+from data.mugsy_dataset import MugsyCapture
 from utils import load_krt
 
 mp.set_start_method("spawn", force=True)
@@ -37,23 +38,6 @@ stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.DEBUG)
 stdout_handler.setFormatter(formatter)
 logger.addHandler(stdout_handler)
-
-
-def none_collate_fn(items: List) -> Optional[torch.Tensor]:
-    """Modified form of :func:`torch.utils.data.dataloader.default_collate`
-    that will strip samples from the batch if they are ``None``."""
-    items = [item for item in items if item is not None]
-    return default_collate(items) if len(items) > 0 else None
-
-
-@dataclass(frozen=True)
-class MugsyCapture:
-    """Unique identifier for a Mugsy capture"""
-
-    mcd: str  # Mugsy capture date in 'yyyymmdd' format, eg `20210223`
-    mct: str  # Mugsy capture time in 'hhmm' format, eg `1023`
-    sid: str  # Subject ID, three letters and three numbers, eg `avw368`
-    is_relightable: bool  # Whether this is a relightable capture
 
 
 # Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
@@ -241,6 +225,10 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         frame_list_path = self.dir / "frame_list.txt"
         self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, delim_whitespace=True)
 
+        # Filter by segments
+        segments_to_keep = ["E001_Neutral_Eyes_Open", "E057_Cheeks_Puffed", "E061_Lips_Puffed"]
+        self.framelist = self.framelist[self.framelist["seg_id"].isin(segments_to_keep)]
+
         # Normalization stats
         texmean = np.asarray(Image.open(self.dir / "tex_mean.png"), dtype=np.float32)
         self.texmean = einops.rearrange(texmean, "h w c -> c h w").astype(np.float32).copy("C")
@@ -255,15 +243,13 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         # vlist, tlist = [], []
         for neut_seg, neut_frame in neut_framelist:
             verts = np.fromfile(
-                self.dir / f"tracked_mesh/{neut_seg}/{neut_frame:06d}.bin",
+                self.dir / f"tracked_mesh/{neut_seg}/{neut_frame}.bin",
                 dtype=np.float32,
             ).reshape(-1, 3)
 
             # Didn't find significant speed difference between cv2 and PIL
-            tex = np.asarray(
-                self.dir / f"/unwrapped_uv_1024/{neut_seg}/average/{neut_frame:06d}.png",
-                dtype=np.uint8,
-            )
+            tex_path = self.dir / f"unwrapped_uv_1024/{neut_seg}/average/{neut_frame}.png"
+            tex = np.asarray(Image.open(tex_path))
             tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
 
             # vlist.append(verts)
@@ -303,21 +289,19 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             # Camera image
             path = self.dir / "images" / segment / camera_id / f"{frame_id}.png"
             img = np.asarray(Image.open(path))
-            img = einops.rearrange(img, "h w c -> c h w")
-            img = img.astype(np.float32)
+            img = einops.rearrange(img, "h w c -> c h w").astype(np.float32)
 
             # Mesh
-            path = self.dir / "tracked_mesh" / segment / camera_id / f"{frame_id}.bin"
+            path = self.dir / "tracked_mesh" / segment / f"{frame_id}.bin"
             verts = np.fromfile(path, dtype=np.float32).reshape(-1, 3)
 
             # Average texture
-            path = self.dir / "unwrapped_uv_1024" / segment / camera_id / f"{frame_id}.png"
+            path = self.dir / "unwrapped_uv_1024" / segment / "average" / f"{frame_id}.png"
             avgtex = np.asarray(Image.open(path))
-            avgtex = einops.rearrange(avgtex, "h w c -> c h w")
-            avgtex = avgtex.astype(np.float32)
+            avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
 
             # Head pose (global transform of the person's head)
-            path = self.dir / "tracked_mesh" / segment / camera_id / f"{frame_id}_transform.txt"
+            path = self.dir / "tracked_mesh" / segment / f"{frame_id}_transform.txt"
             headpose = np.loadtxt(path, dtype=np.float32)
 
             if any(i is None for i in (img, verts, avgtex, headpose)):
@@ -332,29 +316,31 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         pixelcoords = np.stack((px, py), axis=-1)
 
         return dict(
-            image=img,
-            verts=(verts - self.vertmean) / self.vertstd,
+            # krt info
+            camrot=np.dot(headpose[:3, :3].T, self.camrot[camera_id].T).T,
+            campos=np.dot(headpose[:3, :3].T, self.campos[camera_id] - headpose[:3, 3]),
+            focal=self.focal[camera_id],
+            princpt=self.princpt[camera_id],
+            modelmatrix=np.eye(4, dtype=np.float32),
+            # Encoder inputs
             avgtex=(avgtex - self.texmean) / self.texstd,
+            verts=(verts - self.vertmean) / self.vertstd,
+            neut_avgtex=(self.neut_avgtex - self.texmean) / self.texstd,
+            neut_verts=(self.neut_vert - self.vertmean) / self.vertstd,
+            # Select pixels to evalaute ray marching on
+            pixelcoords=pixelcoords,
+            # Indexing for background/color modeling
+            idindex=0,
+            camindex=self.camera_map[camera_id],  # TODO handle for multi-id
+            # Other
+            image=img,
             headpose=headpose,
             frameid=frame_id,
             cameraid=camera_id,
             segment=segment,
             # id cond info
-            neut_verts=(self.neut_vert - self.vertmean) / self.vertstd,
-            neut_avgtex=(self.neut_avgtex - self.texmean) / self.texstd,
-            # krt info
-            campos=np.dot(headpose[:3, :3].T, self.campos[camera_id] - headpose[:3, 3]),
-            camrot=np.dot(headpose[:3, :3].T, self.camrot[camera_id].T).T,
-            focal=self.focal[camera_id],
-            princpt=self.princpt[camera_id],
-            modelmatrix=np.eye(4, dtype=np.float32),
             validinput=True,
-            pixelcoords=pixelcoords,
-            # # TODO(julieta) use mask as in previous dataset
             imagemask=np.ones((1, self.height, self.width), dtype=np.float32),
-            # ididx and camidx
-            idindex=0,
-            camindex=self.camera_map[camera_id],  # TODO handle for multi-id
         )
 
     def __getitem__(self, idx: int) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:

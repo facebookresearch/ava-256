@@ -79,8 +79,6 @@ class Autoencoder(nn.Module):
         camindex: Optional[torch.Tensor] = None,
         # encoding: Optional[torch.Tensor] = None,
         id_cond: Optional[dict] = None,
-        # image: Optional[torch.Tensor] = None,  # NOTE(julieta) the image is only needed for loss computation. Do that outside
-        # imagemask: Optional[torch.Tensor] = None,
         bg: Optional[torch.Tensor] = None,
         # segmentation: Optional[torch.Tensor] = None,
         running_avg_scale: bool = False,
@@ -144,7 +142,6 @@ class Autoencoder(nn.Module):
         # viewdir = viewpos / torch.sqrt(torch.sum(viewpos**2, dim=-1, keepdim=True))
 
         decout = self.decoder_assembler(
-            verts,
             id_cond,
             expr_code,
             viewpos,

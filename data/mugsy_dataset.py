@@ -18,14 +18,18 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 import torch.utils.data
-from care.data.io import typed
-from care.strict.data.io.file_system.airstore_client import register_airstore_in_fsspec
 from PIL import Image
 from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
-from data.tiled_png_utils import generate_transform, process_dataset_metadata, process_tile_png_sample
+try:
+    from care.data.io import typed
+    from care.strict.data.io.file_system.airstore_client import register_airstore_in_fsspec
+
+    from data.tiled_png_utils import generate_transform, process_dataset_metadata, process_tile_png_sample
+except:
+    print("Could not load CARE, mugsy dataset might not work!")
 
 mp.set_start_method("spawn", force=True)
 
@@ -56,7 +60,7 @@ class MugsyCapture:
     mcd: str  # Mugsy capture date in 'yyyymmdd' format, eg `20210223`
     mct: str  # Mugsy capture time in 'hhmm' format, eg `1023`
     sid: str  # Subject ID, three letters and three numbers, eg `avw368`
-    is_relightable: bool  # Whether this is a relightable capture
+    is_relightable: bool = False  # Whether this is a relightable capture
 
 
 # Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
