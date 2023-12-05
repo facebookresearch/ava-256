@@ -53,7 +53,7 @@ def test_encoder_sizes():
     neut_verts = verts + torch.rand(*verts.shape, dtype=torch.float32)
 
     # Load textures
-    avgtex = np.array(Image.open("assets/021924.png")).astype(np.float32)
+    avgtex = np.array(Image.open("assets/021924_avgtex.png")).astype(np.float32)
     avgtex = torch.from_numpy(einops.rearrange(avgtex, "H W C -> 1 C H W"))
     neut_avgtex = avgtex + torch.rand(*avgtex.shape, dtype=torch.float32)
 
