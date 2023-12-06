@@ -44,7 +44,7 @@ class RGBDecoder(nn.Module):
             print(f"boxsize {boxsize} not supported yet")
 
         l = models.utils.LinearWN
-        c = models.utils.ConvTranspose2dWNUB
+        c = models.utils.ConvTranspose2dWN
         v = models.utils.Conv2dWN
         a = nn.LeakyReLU
         s = nn.Sequential
@@ -66,7 +66,7 @@ class RGBDecoder(nn.Module):
 
         h = 8
         for i in range(self.nlayers):
-            t: List[nn.Module] = [c(size[i], size[i + 1], h, h, 4, 2, 1)]
+            t: List[nn.Module] = [c(in_channels=size[i], out_channels=size[i + 1], kernel_size=4, stride=2, padding=1)]
             h *= 2
 
             if i < self.nlayers - 1:
@@ -108,15 +108,12 @@ class RGBDecoder(nn.Module):
         for i in range(self.nlayers):
             xx = self.layers[f"t{i}"](x)
 
-            if id_biases is not None:
-                n = id_biases[i].shape[1]
+            n = id_biases[i].shape[1]
 
-                if n == xx.shape[1]:
-                    x = (xx + id_biases[i]) * scale
-                else:
-                    # NOTE(julieta): last layer (1024 x 1024) is pass through since slab is 24 channels vs 3 in bias
-                    x = xx
+            if n == xx.shape[1]:
+                x = (xx + id_biases[i]) * scale
             else:
+                # NOTE(julieta): last layer (1024 x 1024) is pass through since slab is 24 channels vs 3 in bias
                 x = xx
 
         tex = x + self.bias[None, :, :, :]

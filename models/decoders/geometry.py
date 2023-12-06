@@ -9,6 +9,8 @@ import models.utils
 
 
 class GeometryDecoder(nn.Module):
+    """Decoder for both alpha (opacity) and geometry"""
+
     def __init__(
         self,
         uv: np.ndarray,
@@ -47,7 +49,7 @@ class GeometryDecoder(nn.Module):
         else:
             print(f"boxsize {boxsize} not supported yet")
 
-        c = models.utils.ConvTranspose2dWNUB
+        c = models.utils.ConvTranspose2dWN
         v = models.utils.Conv2dWN
         a = nn.LeakyReLU
         s = nn.Sequential
@@ -71,7 +73,7 @@ class GeometryDecoder(nn.Module):
         # build deconv arch with early exists for geometry and motion
         h = 8
         for i in range(self.nlayers):
-            t: List[nn.Module] = [c(size[i], size[i + 1], h, h, 4, 2, 1)]
+            t: List[nn.Module] = [c(in_channels=size[i], out_channels=size[i + 1], kernel_size=4, stride=2, padding=1)]
             if i < self.nlayers - 1:
                 t.append(a(0.2, inplace=True))
 
@@ -137,16 +139,11 @@ class GeometryDecoder(nn.Module):
         for i in range(self.nlayers):
             xx = self.layers[f"t{i}"](x)
 
-            if id_bias is not None:
-                n = id_bias[i].shape[1] // 2
-                if n == xx.shape[1]:
-                    x = (xx * (id_bias[i][:, :n, ...] * 0.1 + 1.0) + id_bias[i][:, n:, ...]) * scale
-                elif n * 2 == xx.shape[1]:
-                    x = (xx + id_bias[i]) * scale
-                else:
-                    x = xx  # note: last layer (1024 x 1024) ignores the pass through since slab is larger than 3 channels
+            n = id_bias[i].shape[1]
+            if n == xx.shape[1]:
+                x = (xx + id_bias[i]) * scale
             else:
-                x = xx
+                x = xx  # note: last layer (1024 x 1024) ignores the pass through since slab is larger than 3 channels
 
             if x.shape[-1] == self.motion_size:
                 mot = self.motion(x)
