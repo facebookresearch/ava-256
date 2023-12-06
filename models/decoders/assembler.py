@@ -259,15 +259,10 @@ class DecoderAssembler(nn.Module):
         # TODO(julieta) this is denormalizing with hardcoded values... do something about this
         template = torch.cat([F.relu(primrgb * 25.0 + 100.0), F.relu(primalpha)], dim=2)
 
-        # TODO(julieta) move losses outside
-        # losses = dict()
-        # if "primvolsum" in loss_set:
-        #     losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
-
         return {
             "verts": predicted_geo,
             "template": template,
             "primpos": primpos,
             "primrot": primrot,
             "primscale": primscale,
-        }  # , losses
+        }

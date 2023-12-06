@@ -214,8 +214,8 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         for cam, krt in krt_dicts.items():
             self.campos[cam] = (-np.dot(krt["extrin"][:3, :3].T, krt["extrin"][:3, 3])).astype(np.float32)
             self.camrot[cam] = (krt["extrin"][:3, :3]).astype(np.float32)
-            self.focal[cam] = (np.diag(krt["intrin"][:2, :2]) / downsample).astype(np.float32)
-            self.princpt[cam] = (krt["intrin"][:2, 2] / downsample).astype(np.float32)
+            self.focal[cam] = (np.diag(krt["intrin"][:2, :2]) * 2 / downsample).astype(np.float32)
+            self.princpt[cam] = (krt["intrin"][:2, 2] * 2 / downsample).astype(np.float32)
 
         self.camera_map = dict()
         for i, cam in enumerate(self.cameras):

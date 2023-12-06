@@ -414,15 +414,19 @@ if __name__ == "__main__":
         iter_total_time = time.time() - iter_start_time
 
         # # print progress
-        # if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
-        #     if args.rank == 0:
-        #         writer.batch(
-        #             iternum,
-        #             iternum * batchsize + torch.arange(0),
-        #             f"{outpath}/progress_{iternum}.jpg",
-        #             **cudadata,
-        #             **output,
-        #         )
+        if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
+            del output["verts"]
+            # fmt: off
+            # import ipdb; ipdb.set_trace()
+            # fmt: on
+            if args.rank == 0:
+                writer.batch(
+                    iternum,
+                    iternum * batchsize + torch.arange(0),
+                    f"{outpath}/progress_{iternum}.jpg",
+                    **cudadata,
+                    **output,
+                )
 
         # compute evaluation output
         # if not args.noprogress and iternum in evalpoints and args.rank == 0:
