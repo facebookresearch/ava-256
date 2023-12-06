@@ -89,7 +89,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
 
         # TODO(julieta) merge all camera names?
 
-    def get_texture_norm_stats(self):
+    def get_texture_norm_stats(self) -> Tuple[np.ndarray, float]:
         """
         Calculate the texture mean and variance across all subdatasets.
         Technically wrong since we just compute the mean of the means, but it's good enough
@@ -117,7 +117,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
 
         return texmean, math.sqrt(texvar)
 
-    def get_mesh_vert_stats(self):
+    def get_mesh_vert_stats(self) -> Tuple[np.ndarray, float]:
         """
         Calculate the mesh mean and variance across all subdatasets
         """
@@ -288,7 +288,9 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         try:
             # Camera image
             path = self.dir / "images" / segment / camera_id / f"{frame_id}.png"
-            img = np.asarray(Image.open(path))
+            img = Image.open(path)
+            img = img.resize((self.width, self.height))  # Make of appropriate size
+            img = np.asarray(img)
             img = einops.rearrange(img, "h w c -> c h w").astype(np.float32)
 
             # Mesh

@@ -12,5 +12,4 @@
         120
     ],
     "python.analysis.typeCheckingMode": "basic",
-    "vim.useCtrlKeys": false,
 }

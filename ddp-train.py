@@ -23,6 +23,7 @@ from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.mugsy_dataset import MugsyCapture
 from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
 from data.mugsy_dataset import none_collate_fn
+from losses import mean_ell_1
 
 sys.dont_write_bytecode = True
 
@@ -111,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
     parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
-    parser.add_argument("--displayloss", action="store_true", help="logging loss value every iteartion")
+    parser.add_argument("--displayloss", action="store_true", help="logging loss value every iteration")
     parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
     parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
 
@@ -124,7 +125,7 @@ if __name__ == "__main__":
     # Training hyperparams.
     parser.add_argument("--maxiter", type=int, default=10_000_000, help="maximum number of iterations")
     parser.add_argument("--num_workers", type=int, default=4, help="number of dataloader workers")
-    parser.add_argument("--batchsize", type=int, default=1, help="Batch size per GPU to use")
+    parser.add_argument("--batchsize", type=int, default=2, help="Batch size per GPU to use")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="Learning rate passed as it to the optimizer")
     parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
     parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
@@ -239,9 +240,11 @@ if __name__ == "__main__":
         # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
         train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
         train_dirs = ["/home/julietamartinez/src/multiface/mini_dataset/m--20180227--0000--6795937--GHS"]
-        dataset = AvaMultiCaptureDataset(train_captures, train_dirs)
+        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")
+
+    vertmean, vertstd = torch.Tensor(dataset.vertmean).cuda(), dataset.vertstd
 
     maxiter = args.maxiter  # that ought to be enough for anyone
     logging.info(" maxiter :  {}, batchsize: {}".format(maxiter, batchsize))
@@ -289,20 +292,17 @@ if __name__ == "__main__":
 
     starttime = time.time()
 
-    lossweights = profile.get_loss_weights()
+    loss_weights = profile.get_loss_weights()
     logging.info("Optimizer instantiated ({:.2f} s)".format(time.time() - starttime))
 
     # train
     starttime = time.time()
     prevloss = np.inf
 
-    prefetch_cpu = list()
-    fetchid = 0
+    # Total experiment time
     lstart = time.time()
 
     prevtime = time.time()
-
-    perf_stats = {}
 
     output_set = profile.get_output_set()
 
@@ -310,12 +310,21 @@ if __name__ == "__main__":
     output_set = set(output_set)
     logging.info(" OUTPUT LIST :{}".format(output_set))
 
-    for data in dataloader:
+    for iternum, data in enumerate(dataloader):
         if data is None:
             continue
 
         iter_start_time = time.time()
         cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
+
+        # TODO(julieta) control these by cli/config arguments
+        running_avg_scale = False
+        gt_geo = None
+        residuals_weight = 1.0
+        if iternum < 100:
+            running_avg_scale = True
+            gt_geo = cudadata["verts"]
+            residuals_weight = 0.0
 
         output = ae(
             cudadata["camrot"],
@@ -330,45 +339,59 @@ if __name__ == "__main__":
             cudadata["pixelcoords"],
             cudadata["idindex"],
             cudadata["camindex"],
+            running_avg_scale=running_avg_scale,
+            # These control the behaviour of the forward pass, and make the optimization easier/harder and more/less stable
+            gt_geo=gt_geo,
+            residuals_weight=residuals_weight,
             output_set=output_set,
-            # **cudadata,
         )
 
-        # TODO(julieta) compute losses
-        losses = {}
+        # TODO(julieta) make an enum for these losses
+        losses: Dict[str, torch.Tensor] = {}
 
+        if "irgbl1" in loss_weights:
+            # NOTE(julieta) both are unnormalized already
+            losses["irgbl1"] = mean_ell_1(output["irgbrec"], cudadata["image"])
+
+        if "vertl1" in loss_weights:
+            losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
+            # losses["vertl1"] = mean_ell_1((output["verts"] - vertmean) / vertstd, cudadata["verts"])
+
+        # fmt: off
+        # import ipdb; ipdb.set_trace()
+        # fmt: on
         # compute final loss
         loss = sum(
             [
-                lossweights[k]
+                loss_weights[k]
                 * (torch.sum(v[0]) / torch.sum(v[1]).clamp(min=1e-6) if isinstance(v, tuple) else torch.mean(v))
                 for k, v in losses.items()
             ]
         )
 
-        local_explosion = not args.nostab and (loss.item() > 400 * prevloss or not np.isfinite(loss.item()))
-        loss_explosion = False
-        if enableddp:
-            loss_quorum[0] = 1
-            if local_explosion:
-                loss_quorum[0] = 0
-                logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
-            loss_explosion = check_quorum(loss_quorum, allmembers)
-        else:
-            if local_explosion:
-                logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
-                loss_explosion = True
+        # local_explosion = not args.nostab and (loss.item() > 400 * prevloss or not np.isfinite(loss.item()))
+        # loss_explosion = False
+        # if enableddp:
+        #     loss_quorum[0] = 1
+        #     if local_explosion:
+        #         loss_quorum[0] = 0
+        #         logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
+        #     loss_explosion = check_quorum(loss_quorum, allmembers)
+        # else:
+        #     if local_explosion:
+        #         logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
+        #         loss_explosion = True
 
-        if local_explosion:
-            # raise RuntimeError("Cannot recover from loss explosion!")
-            try:
-                logging.warning(
-                    f"Rank {args.rank} found a sample with loss explosion for id {cudadata['idindex'].tolist()}, setting no grad"
-                )
-            except Exception as e:
-                print(e)
-            # loss.register_hook(lambda grad: torch.zeros_like(grad))
-            # loss_explosion = False
+        # if local_explosion:
+        #     # raise RuntimeError("Cannot recover from loss explosion!")
+        #     try:
+        #         logging.warning(
+        #             f"Rank {args.rank} found a sample with loss explosion for id {cudadata['idindex'].tolist()}, setting no grad"
+        #         )
+        #     except Exception as e:
+        #         print(e)
+        #     # loss.register_hook(lambda grad: torch.zeros_like(grad))
+        #     # loss_explosion = False
 
         loss.backward()
         params = [p for pg in optim.param_groups for p in pg["params"]]
@@ -386,70 +409,70 @@ if __name__ == "__main__":
         # and an explicit one to check for loss explosion
         iter_total_time = time.time() - iter_start_time
 
-        # print progress
-        if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
-            if args.rank == 0:
-                writer.batch(
-                    iternum,
-                    iternum * batchsize + torch.arange(0),
-                    f"{outpath}/progress_{iternum}.jpg",
-                    **cudadata,
-                    **output,
-                )
+        # # print progress
+        # if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
+        #     if args.rank == 0:
+        #         writer.batch(
+        #             iternum,
+        #             iternum * batchsize + torch.arange(0),
+        #             f"{outpath}/progress_{iternum}.jpg",
+        #             **cudadata,
+        #             **output,
+        #         )
 
         # compute evaluation output
         # if not args.noprogress and iternum in evalpoints and args.rank == 0:
         #    writer.batch(iternum, iternum * batchsize + torch.arange(0), **cudadata, **output)
 
-        save_checkpoints = False
-        if iternum < 10_000:
-            # to account for early loss explosions
-            if iternum % 2_000 == 0:
-                save_checkpoints = True
-        else:
-            if iternum % 20_000 == 0:
-                save_checkpoints = True
+        # save_checkpoints = False
+        # if iternum < 10_000:
+        #     # to account for early loss explosions
+        #     if iternum % 2_000 == 0:
+        #         save_checkpoints = True
+        # else:
+        #     if iternum % 20_000 == 0:
+        #         save_checkpoints = True
 
-        # save intermediate results only if rank 0 does not have loss explosion
-        if save_checkpoints:
-            # in case of ddp loss_explosion is true if any of the ranks have loss explosion
-            # in case of non ddp loss_explosion is true if the current rank has a loss explosion
-            # only save dataloader state if loss_explosion is false, reason being rank 0 will only
-            # save checkpoint if no rank has loss explosion
-            if not loss_explosion:
-                # if args.rank == 0:
-                # NOTE(julieta) all ranks will save their models...
-                logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
-                torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))  # outpath should be " run_base_dir/0/0"
-                # torch.save(optim.state_dict(), "{}/optimparams.pt".format(outpath))
-                torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
-                # torch.save(optim.state_dict(), "{}/optimparams_{:06d}.pt".format(outpath, iternum))
-                # checkpoint_job_config = read_job_config()
-                # checkpoint_job_config["num_iterations"] = iternum
-                # log_job_config(checkpoint_job_config)
-            else:
-                logging.warning(f"skipping checkpoint save, rank {args.rank} is seeing unstable loss value(s)")
+        # # save intermediate results only if rank 0 does not have loss explosion
+        # if save_checkpoints:
+        #     # in case of ddp loss_explosion is true if any of the ranks have loss explosion
+        #     # in case of non ddp loss_explosion is true if the current rank has a loss explosion
+        #     # only save dataloader state if loss_explosion is false, reason being rank 0 will only
+        #     # save checkpoint if no rank has loss explosion
+        #     if not loss_explosion:
+        #         # if args.rank == 0:
+        #         # NOTE(julieta) all ranks will save their models...
+        #         logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
+        #         torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))  # outpath should be " run_base_dir/0/0"
+        #         # torch.save(optim.state_dict(), "{}/optimparams.pt".format(outpath))
+        #         torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+        #         # torch.save(optim.state_dict(), "{}/optimparams_{:06d}.pt".format(outpath, iternum))
+        #         # checkpoint_job_config = read_job_config()
+        #         # checkpoint_job_config["num_iterations"] = iternum
+        #         # log_job_config(checkpoint_job_config)
+        #     else:
+        #         logging.warning(f"skipping checkpoint save, rank {args.rank} is seeing unstable loss value(s)")
 
         # if local_explosion:
-        if loss_explosion:
-            if enableddp:
-                # to avoid any race conditions when multiple ranks are facing loss explosions
-                # we do not want to load aeparams.pt while rank 0 is still writing the file
-                dist.barrier()
+        # if loss_explosion:
+        #     if enableddp:
+        #         # to avoid any race conditions when multiple ranks are facing loss explosions
+        #         # we do not want to load aeparams.pt while rank 0 is still writing the file
+        #         dist.barrier()
 
-            base_dir = outpath
-            if not base_dir:
-                raise AssertionError("cannot reset without providing base_dir, check env var RSC_EXP_RUN_BASE_DIR")
-            logging.warning(
-                f"unstable loss function; resetting -- resume from the latest checkpoint : {outpath}/aeparams.pt"
-            )
-            # reloading should called after backward is invoked to clean up CUDA memory of the failed iteration
-            ae.load_state_dict(torch.load(f"{outpath}/aeparams.pt"), strict=False)
-            _, optim = gen_optimizer(
-                ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, encoder_lr=args.encoder_lr
-            )
-        # else:
-        prevloss = loss.item()
+        #     base_dir = outpath
+        #     if not base_dir:
+        #         raise AssertionError("cannot reset without providing base_dir, check env var RSC_EXP_RUN_BASE_DIR")
+        #     logging.warning(
+        #         f"unstable loss function; resetting -- resume from the latest checkpoint : {outpath}/aeparams.pt"
+        #     )
+        #     # reloading should called after backward is invoked to clean up CUDA memory of the failed iteration
+        #     ae.load_state_dict(torch.load(f"{outpath}/aeparams.pt"), strict=False)
+        #     _, optim = gen_optimizer(
+        #         ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, encoder_lr=args.encoder_lr
+        #     )
+        # # else:
+        # prevloss = loss.item()
 
         del cudadata
 
@@ -473,69 +496,69 @@ if __name__ == "__main__":
             )
 
         # log losses to tensorboard even if we were not asked for profile stats
-        if tensorboard_logger is not None and iternum % 50 == 0:
-            tb_loss_stats = {
-                "rank": args.rank,
-                "loss": float(loss.item()),
-            }
-            for k, v in losses.items():
-                if isinstance(v, tuple):
-                    tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
-                else:
-                    tb_loss_stats[k] = torch.mean(v)
+        # if tensorboard_logger is not None and iternum % 50 == 0:
+        #     tb_loss_stats = {
+        #         "rank": args.rank,
+        #         "loss": float(loss.item()),
+        #     }
+        #     for k, v in losses.items():
+        #         if isinstance(v, tuple):
+        #             tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
+        #         else:
+        #             tb_loss_stats[k] = torch.mean(v)
 
-            for k, v in tb_loss_stats.items():
-                tensorboard_logger.add_scalar("loss/" + k, v, iternum)
+        #     for k, v in tb_loss_stats.items():
+        #         tensorboard_logger.add_scalar("loss/" + k, v, iternum)
 
-            if enableddp and args.worldsize > 1:
-                averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
-                for k, v in averaged_losses.items():
-                    dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
-                    averaged_losses[k] = v
+        #     if enableddp and args.worldsize > 1:
+        #         averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
+        #         for k, v in averaged_losses.items():
+        #             dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
+        #             averaged_losses[k] = v
 
-                if rank == 0:
-                    for k, v in averaged_losses.items():
-                        tensorboard_logger.add_scalar(f"averaged_{k}/", v.item())
+        #         if rank == 0:
+        #             for k, v in averaged_losses.items():
+        #                 tensorboard_logger.add_scalar(f"averaged_{k}/", v.item())
 
-        if args.worldsize > 1 and iternum % 50 == 0:
-            tb_loss_stats = {
-                "rank": args.rank,
-                "loss": float(loss.item()),
-            }
-            for k, v in losses.items():
-                if isinstance(v, tuple):
-                    tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
-                else:
-                    tb_loss_stats[k] = torch.mean(v)
+        # if args.worldsize > 1 and iternum % 50 == 0:
+        #     tb_loss_stats = {
+        #         "rank": args.rank,
+        #         "loss": float(loss.item()),
+        #     }
+        #     for k, v in losses.items():
+        #         if isinstance(v, tuple):
+        #             tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
+        #         else:
+        #             tb_loss_stats[k] = torch.mean(v)
 
-            averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
-            for k, v in averaged_losses.items():
-                dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
-                averaged_losses[k] = v
+        #     averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
+        #     for k, v in averaged_losses.items():
+        #         dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
+        #         averaged_losses[k] = v
 
-            if rank == 0:
-                for k, v in averaged_losses.items():
-                    logging.info(f"Iteration {iternum}, averaged {k}: {v.item():.3f}")
+        #     if rank == 0:
+        #         for k, v in averaged_losses.items():
+        #             logging.info(f"Iteration {iternum}, averaged {k}: {v.item():.3f}")
 
-        if iternum and iternum % 2000 == 0:
-            logging.info(
-                "Rank {} Iteration {} loss = {:.5f}, ".format(args.rank, iternum, float(loss.item()))
-                + ", ".join(
-                    [
-                        "{} = {:.5f}".format(
-                            k,
-                            float(
-                                torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
-                                if isinstance(v, tuple)
-                                else torch.mean(v)
-                            ),
-                        )
-                        for k, v in losses.items()
-                    ]
-                )
-            )
+        # if iternum and iternum % 2000 == 0:
+        #     logging.info(
+        #         "Rank {} Iteration {} loss = {:.5f}, ".format(args.rank, iternum, float(loss.item()))
+        #         + ", ".join(
+        #             [
+        #                 "{} = {:.5f}".format(
+        #                     k,
+        #                     float(
+        #                         torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
+        #                         if isinstance(v, tuple)
+        #                         else torch.mean(v)
+        #                     ),
+        #                 )
+        #                 for k, v in losses.items()
+        #             ]
+        #         )
+        #     )
 
-        iternum += 1
+        # iternum += 1
 
         if iternum >= maxiter:
             logging.info(

@@ -39,6 +39,7 @@ class Autoencoder(nn.Module):
     def __init__(
         self,
         *,
+        # TODO(julieta) should we create more specific types for these submodules?
         identity_encoder: nn.Module,
         expression_encoder: nn.Module,
         bottleneck: nn.Module,
@@ -197,6 +198,7 @@ class Autoencoder(nn.Module):
             "expr_mu": expr_mu,
             "expr_logstd": expr_logstd,
             "irgbrec": rayrgb,
+            "verts": decout["verts"],
             # === Returned if asked for, useful for debugging and visualization ===
             "id_cond": id_cond if "idcond" in output_set else None,
             "samplecoords": samplecoords if "samplecooords" in output_set else None,

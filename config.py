@@ -15,7 +15,7 @@
 
 import json
 import os
-from typing import Set
+from typing import Dict, Set
 
 import numpy as np
 import torch
@@ -132,12 +132,8 @@ class Train:
     def get_ae_args(self):
         return dict(renderoptions=get_renderoptions())
 
-    def get_loss_weights(self):
-        # return {"irgbl1": 1.0, "vertl1": 0.1, "kldiv": 0.0001, "primvolsum": 0.01, "vgg": 1.0}
-        # for ablation: kl loss weight: 10^-3
-        # return {"irgbl1": 1.0, "vertl1": 0.1, "kldiv": 0.001, "primvolsum": 0.01, "vgg": 0.0}
+    def get_loss_weights(self) -> Dict[str, float]:
         return {"irgbl1": 1.0, "vertl1": 0.1, "kldiv": 0.001, "primvolsum": 0.01}
-        # return {"irgbl1": 1.0, "vertl1": 0.1, "kldiv": 0.01, "primvolsum": 0.01}
 
 
 class ProgressWriterNoBG:
