@@ -24,6 +24,7 @@ from data.mugsy_dataset import MugsyCapture
 from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
 from data.mugsy_dataset import none_collate_fn
 from losses import mean_ell_1
+from models.bottlenecks.vae import kl_loss_stable
 
 sys.dont_write_bytecode = True
 
@@ -305,10 +306,7 @@ if __name__ == "__main__":
     prevtime = time.time()
 
     output_set = profile.get_output_set()
-
-    # NOTE(julieta) We use this list exclusively for "in" tests, so a set is more fitting. Consider changing the name
-    output_set = set(output_set)
-    logging.info(" OUTPUT SET :{}".format(output_set))
+    logging.info("OUTPUT SET :{}".format(output_set))
 
     for iternum, data in enumerate(dataloader):
         if data is None:
@@ -355,11 +353,13 @@ if __name__ == "__main__":
 
         if "vertl1" in loss_weights:
             losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
-            # losses["vertl1"] = mean_ell_1((output["verts"] - vertmean) / vertstd, cudadata["verts"])
 
         if "primvolsum" in loss_weights:
             primscale = output["primscale"]
             losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
+
+        if "kldiv" in loss_weights:
+            losses["kldiv"] = kl_loss_stable(output["expr_mu"], output["expr_logstd"])
 
         # fmt: off
         # import ipdb; ipdb.set_trace()

@@ -290,8 +290,8 @@ class ProgressWriter:
 class Progress:
     batchsize = 4
 
-    def get_output_set(self):
-        return ["irgbrec", "bg"]
+    def get_output_set(self) -> Set[str]:
+        return set(["irgbrec", "bg"])
 
     def get_ae_args(self):
         return dict(renderoptions=get_renderoptions())
