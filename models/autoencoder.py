@@ -200,6 +200,7 @@ class Autoencoder(nn.Module):
             "irgbrec": rayrgb,
             "verts": decout["verts"],
             # === Returned if asked for, useful for debugging and visualization ===
+            "primscale": decout["primscale"] if "primscale" in output_set else None,
             "id_cond": id_cond if "idcond" in output_set else None,
             "samplecoords": samplecoords if "samplecooords" in output_set else None,
             "pos_img": pos_img if "pos_img" in output_set else None,

@@ -126,7 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("--maxiter", type=int, default=10_000_000, help="maximum number of iterations")
     parser.add_argument("--num_workers", type=int, default=4, help="number of dataloader workers")
     parser.add_argument("--batchsize", type=int, default=2, help="Batch size per GPU to use")
-    parser.add_argument("--learning-rate", type=float, default=2e-4, help="Learning rate passed as it to the optimizer")
+    parser.add_argument("--learning-rate", type=float, default=4e-4, help="Learning rate passed as it to the optimizer")
     parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
     parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
     parser.add_argument("--downsample", type=int, default=4, help="image downsampling factor at data loader")
@@ -308,7 +308,7 @@ if __name__ == "__main__":
 
     # NOTE(julieta) We use this list exclusively for "in" tests, so a set is more fitting. Consider changing the name
     output_set = set(output_set)
-    logging.info(" OUTPUT LIST :{}".format(output_set))
+    logging.info(" OUTPUT SET :{}".format(output_set))
 
     for iternum, data in enumerate(dataloader):
         if data is None:
@@ -356,6 +356,10 @@ if __name__ == "__main__":
         if "vertl1" in loss_weights:
             losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
             # losses["vertl1"] = mean_ell_1((output["verts"] - vertmean) / vertstd, cudadata["verts"])
+
+        if "primvolsum" in loss_weights:
+            primscale = output["primscale"]
+            losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
 
         # fmt: off
         # import ipdb; ipdb.set_trace()

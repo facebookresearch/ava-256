@@ -127,7 +127,7 @@ class Train:
         return get_autoencoder(dataset, assetpath)
 
     def get_output_set(self) -> Set[str]:
-        return set(["irgbrec", "irgbsqerr", "sampledimg"])
+        return set(["irgbrec", "sampledimg", "primscale"])
 
     def get_ae_args(self):
         return dict(renderoptions=get_renderoptions())
