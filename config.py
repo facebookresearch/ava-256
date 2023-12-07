@@ -22,12 +22,6 @@ import torch
 
 from utils import create_uv_baridx, load_obj
 
-# ablation esperiment hs its own holdout segment , camera control system, don't put anything on the following
-###################################
-holdoutcams = []
-holdoutseg = []
-####################################
-
 
 def get_renderoptions():
     return dict(dt=1.0)
@@ -38,7 +32,7 @@ def get_autoencoder(dataset, assetpath: str):
     import torch.nn as nn
 
     import models.autoencoder as aemodel
-    import models.bg.mlp2d_multi as bglib
+    import models.bg.mlp2d as bglib
     import models.bottlenecks.vae as vae
     import models.colorcals.colorcal_multi as colorcalib
     import models.decoders.assembler as decoderlib
@@ -201,7 +195,6 @@ class ProgressWriter:
         for i in range(kwargs["image"].size(0)):
             if ("irgbsqerr" in kwargs) and ("sampledimg" in kwargs):  # training output
                 if "bg" in kwargs and kwargs["bg"] != None:
-                    print("WDEBUG: 1")
                     row.append(
                         np.concatenate(
                             (
@@ -220,7 +213,6 @@ class ProgressWriter:
                         )
                     )
                 else:
-                    print(f"WDEBUG: 2: {kwargs['irgbrec'][i].shape}, {kwargs['sampledimg'][i].shape}")
                     row.append(
                         np.concatenate(
                             (
@@ -238,8 +230,6 @@ class ProgressWriter:
                         )
                     )
             else:  # testoutputs
-                print("WDEBUG: 3")
-
                 if "bg" in kwargs and kwargs["bg"] != None:
                     row.append(
                         np.concatenate(
