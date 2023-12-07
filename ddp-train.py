@@ -7,7 +7,6 @@ import itertools
 import logging
 import os
 import pathlib
-import platform
 import sys
 import time
 from typing import Dict, List, Union
@@ -113,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
     parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
-    parser.add_argument("--displayloss", action="store_true", help="logging loss value every iteration")
+    parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
     parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
     parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
 
@@ -130,12 +129,12 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=4e-4, help="Learning rate passed as it to the optimizer")
     parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
     parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
-    parser.add_argument("--downsample", type=int, default=4, help="image downsampling factor at data loader")
+    parser.add_argument("--downsample", type=int, default=8, help="image downsampling factor at data loader")
     args = parser.parse_args()
 
     # TODO(julieta) remove all references to SLURM variables
-    args.worldsize = int(os.environ.get("SLURM_NTASKS", 1))
-    args.rank = int(os.environ.get("SLURM_PROCID", 0))
+    args.worldsize = int(os.environ.get("SLURM_NTASKS", args.worldsize))
+    args.rank = int(os.environ.get("SLURM_PROCID", args.rank))
 
     current_file = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file)
@@ -194,15 +193,17 @@ if __name__ == "__main__":
     enableddp = False
 
     if args.worldsize > 1:
-        logging.info(" INIT DDP RANK {}  WSIZE {}  URL {}".format(args.rank, args.worldsize, disturl))
+        logging.info(f" INIT DDP RANK {args.rank}  WSIZE {args.worldsize}  URL {disturl}")
+        os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
         dist.init_process_group(backend="nccl", init_method=disturl, world_size=args.worldsize, rank=args.rank)
-        logging.info(" distributed training group is initialized at rank : {}".format(args.rank))
+        logging.info(f" distributed training group is initialized at rank : {args.rank}")
 
         allmembers = None
         loss_quorum = None
         allmembers = dist.new_group(range(worldsize))
         loss_quorum = torch.tensor([1]).cuda()
-        enabledd = True
+
+        enableddp = True
 
     # load config
     starttime = time.time()
@@ -262,7 +263,7 @@ if __name__ == "__main__":
         shuffle=False,
         drop_last=True,
         num_workers=numworkers,
-        pin_memory=True,
+        # pin_memory=True,
         collate_fn=none_collate_fn,
     )
 
@@ -284,7 +285,7 @@ if __name__ == "__main__":
     if enableddp:
         # TODO(julieta) control whether we want to distribute the full model, or just a subset
         # ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=False)
-        ae.encoder = torch.nn.parallel.DistributedDataParallel(ae.encoder, device_ids=[0], find_unused_parameters=False)
+        ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=True)
 
     optim_type = "adam"
     _, optim = gen_optimizer(ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger)
@@ -293,7 +294,7 @@ if __name__ == "__main__":
 
     starttime = time.time()
 
-    loss_weights = profile.get_loss_weights()
+    loss_weights: Dict[str, float] = profile.get_loss_weights()
     logging.info("Optimizer instantiated ({:.2f} s)".format(time.time() - starttime))
 
     # train
@@ -361,6 +362,9 @@ if __name__ == "__main__":
         if "kldiv" in loss_weights:
             losses["kldiv"] = kl_loss_stable(output["expr_mu"], output["expr_logstd"])
 
+        if not losses:
+            raise ValueError("No losses were computed. We can't train like that!")
+
         # fmt: off
         # import ipdb; ipdb.set_trace()
         # fmt: on
@@ -373,6 +377,7 @@ if __name__ == "__main__":
             ]
         )
 
+        # TODO(julieta) DECIDE: do we want to keep explosion detection? Probably not?
         # local_explosion = not args.nostab and (loss.item() > 400 * prevloss or not np.isfinite(loss.item()))
         # loss_explosion = False
         # if enableddp:
@@ -397,6 +402,7 @@ if __name__ == "__main__":
         #     # loss.register_hook(lambda grad: torch.zeros_like(grad))
         #     # loss_explosion = False
 
+        optim.zero_grad()
         loss.backward()
         params = [p for pg in optim.param_groups for p in pg["params"]]
 
@@ -407,7 +413,6 @@ if __name__ == "__main__":
 
         torch.nn.utils.clip_grad_norm_(ae.parameters(), args.clip)
         optim.step()
-        optim.zero_grad()
 
         # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
         # and an explicit one to check for loss explosion
@@ -484,7 +489,7 @@ if __name__ == "__main__":
 
         del cudadata
 
-        if args.displayloss:
+        if not args.nodisplayloss:
             logging.info(
                 "Rank {} Iteration {} loss = {:.4f}, ".format(args.rank, iternum, float(loss.item()))
                 + ", ".join(
