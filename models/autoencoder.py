@@ -10,31 +10,6 @@ import torch.nn as nn
 from extensions.computeraydirs.computeraydirs import compute_raydirs
 
 
-def color_normalize(src, dst):
-    b, h, w = src.shape[0], src.shape[-2], src.shape[-1]
-    A = src.view(-1, 3, w * h)
-    B = dst.view(-1, 3, w * h)
-
-    # mean normalize
-    Amean = torch.mean(A, dim=-1, keepdim=True)
-    Bmean = torch.mean(B, dim=-1, keepdim=True)
-    A = A - Amean
-    B = B - Bmean
-    # AAt = torch.bmm(A, A.permute(0,2,1))
-    # BAt = torch.bmm(B, A.permute(0,2,1))
-    AAt = A @ A.permute(0, 2, 1)
-    BAt = B @ A.permute(0, 2, 1)
-    for i in range(3):
-        AAt[:, i, i] += 1e-3
-    AAti = torch.inverse(AAt)
-    x = torch.bmm(BAt, AAti)
-    C = torch.bmm(x, A) + Bmean
-
-    out = C.view(-1, 3, h, w)
-
-    return out
-
-
 class Autoencoder(nn.Module):
     def __init__(
         self,
