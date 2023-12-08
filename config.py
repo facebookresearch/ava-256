@@ -34,7 +34,7 @@ def get_autoencoder(dataset, assetpath: str):
     import models.autoencoder as aemodel
     import models.bg.mlp2d as bglib
     import models.bottlenecks.vae as vae
-    import models.colorcals.colorcal_multi as colorcalib
+    import models.colorcals.colorcal as colorcalib
     import models.decoders.assembler as decoderlib
     import models.encoders.expression as expression_encoder_lib
     import models.encoders.identity as identity_encoder_lib
@@ -46,7 +46,7 @@ def get_autoencoder(dataset, assetpath: str):
 
     print("@@@ Get autoencoder ABLATION CONFIG FILE : lenth of data set : {}".format(len(dataset.identities)))
 
-    colorcal = colorcalib.Colorcal2(len(dataset.get_allcameras()), len(dataset.identities))
+    colorcal = colorcalib.Colorcal(len(dataset.get_allcameras()), len(dataset.identities))
     objpath = f"{assetpath}/geotextop.obj"
 
     dotobj = load_obj(objpath)
