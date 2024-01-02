@@ -1,12 +1,13 @@
 from typing import Tuple
 
+import einops
 import numpy as np
 import pytest
 import torch
 
 from config import ObjDict
-from extensions.computeraydirs.computeraydirs import compute_raydirs
-from models.raymarchers.mvpraymarcher_new import Raymarcher
+from extensions.utils.utils import compute_raydirs
+from models.raymarchers.mvpraymarcher import Raymarcher as RaymarcherOSS
 from utils import load_krt
 
 
@@ -37,8 +38,7 @@ def KRT() -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
 @pytest.fixture
 def raydirs(KRT, imshape):
-    """Implicitly tests compute_raydirs"""
-
+    """Implicitly test compute_raydirs from OSS extensions"""
     campos, camrot, focal, princpt = KRT
     imwidth, imheight = imshape
 
@@ -57,6 +57,8 @@ def raydirs(KRT, imshape):
 
 
 def test_extension_shapes(raydirs, imshape):
+    """Check the shapes of the raymarcher, and compare OSS and internal version"""
+
     raypos, raydir, tminmax = raydirs
     imwidth, imheight = imshape
 
@@ -73,14 +75,17 @@ def test_extension_shapes(raydirs, imshape):
     }
 
     volradius = 256.0
-    config = ObjDict({"render": {"raymarcher_options": {"volume_radius": volradius, "chlast": False}}})
-    raymarcher = Raymarcher(config)
+    raymarcher = RaymarcherOSS(volradius)
+
+    ##### OSS check...
+    # OSS implementation, template takes channels last
+    decout["template"] = einops.rearrange(decout["template"], "n k c td th tw -> n k td th tw c").contiguous()
+
     rayrgb, rayalpha, _, pos_img = raymarcher(
         raypos,
         raydir,
         tminmax,
-        outputs=decout,
-        with_pos_img=False,
+        decout,
     )
 
     assert rayrgb.shape == torch.Size([1, 3, imheight, imwidth])

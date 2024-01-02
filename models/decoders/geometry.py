@@ -175,7 +175,7 @@ class GeometryDecoder(nn.Module):
         h = int(np.sqrt(self.nboxes))
         w = int(h)
         opacity = opacity.view(x.size(0), self.boxsize, 1, h, self.boxsize, w, self.boxsize)
-        opacity = opacity.permute(0, 3, 5, 2, 1, 4, 6)
-        opacity = opacity.reshape(x.size(0), self.nboxes, 1, self.boxsize, self.boxsize, self.boxsize)
+        opacity = opacity.permute(0, 3, 5, 1, 4, 6, 2)
+        opacity = opacity.reshape(x.size(0), self.nboxes, self.boxsize, self.boxsize, self.boxsize, 1)
 
         return opacity, geo, primposresid, primrvecresid, primscaleresid

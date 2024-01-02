@@ -130,10 +130,10 @@ class RGBDecoder(nn.Module):
         # NOTE(julieta) after this operation, the texture is [N, 8, 3, 128, 8, 128, 8]
         rgb = rgb.view(rgb.size(0), self.boxsize, self.outch, h, self.boxsize, w, self.boxsize)
 
-        # NOTE(julieta) after this operation, the texture is [N,  128, 128, 3, 8, 8, 8]
-        rgb = rgb.permute(0, 3, 5, 2, 1, 4, 6)
+        # NOTE(julieta) after this operation, the texture is [N,  128, 128, 8, 8, 8, 3]
+        rgb = rgb.permute(0, 3, 5, 1, 4, 6, 2)
 
-        # NOTE(julieta) after this operation, the texture is [N, 128 * 128, 3, 8, 8, 8]
-        rgb = rgb.reshape(rgb.size(0), self.nboxes, self.outch, self.boxsize, self.boxsize, self.boxsize)
+        # NOTE(julieta) after this operation, the texture is [N, 128 * 128, 8, 8, 8, 3]
+        rgb = rgb.reshape(rgb.size(0), self.nboxes, self.boxsize, self.boxsize, self.boxsize, self.outch)
 
         return rgb

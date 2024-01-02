@@ -1,317 +1,208 @@
-#include <c10/cuda/CUDAGuard.h>
-#include <c10/cuda/CUDAStream.h>
-#include <torch/extension.h>
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+// 
+// This source code is licensed under the license found in the
+// LICENSE file in the root directory of this source tree.
 
-#include "../common/helper_cuda.h"
-#include "../common/helper_math.h"
-#include "../common/utils.h"
+#include <chrono>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <tuple>
+#include <vector>
 
-#include "primeval.h"
+#include "helper_math.h"
+
+#include "cudadispatch.h"
+
 #include "utils.h"
 
-#include "kernel_dispatch.h"
-#include "mvpraymarch_kernel.h"
+#include "primtransf.h"
+#include "primsampler.h"
+#include "primaccum.h"
 
-template <typename tplate_t>
+#include "mvpraymarch_subset_kernel.h"
+
+typedef std::shared_ptr<PrimTransfDataBase> PrimTransfDataBase_ptr;
+typedef std::shared_ptr<PrimSamplerDataBase> PrimSamplerDataBase_ptr;
+typedef std::shared_ptr<PrimAccumDataBase> PrimAccumDataBase_ptr;
+typedef std::function<void(dim3, dim3, cudaStream_t, int, int, int, int,
+        float3*, float3*, float, float2*, int*, int2*, float3*,
+        PrimTransfDataBase_ptr, PrimSamplerDataBase_ptr,
+        PrimAccumDataBase_ptr)> mapfn_t;
+typedef RaySubsetFixedBVH<false, 512, true, PrimTransfSRT> raysubset_t;
+
 void raymarch_forward_cuda(
-    int N,
-    int H,
-    int W,
-    int K,
-    int MD,
-    int MH,
-    int MW,
-    const float* rayposim,
-    const float* raydirim,
-    float stepsize,
-    const float* tminmaxim,
-    const int* sortedobjid,
-    const int* nodechildren,
-    const float* nodeaabb,
-    const tplate_t* tplate,
-    const float* warp,
-    const float* primpos,
-    const float* primrot,
-    const float* primscale,
-    tplate_t* rayrgbaim,
-    float* raysatim,
-    int* raytermim,
-    float* t_im,
-    bool chlast,
-    float fadescale,
-    float fadeexp,
-    int accum,
-    float termthresh,
-    int griddim,
-    int blocksizex,
-    int blocksizey,
-    bool broadcast_slab,
-    cudaStream_t stream) {
-  using tplate_vec4 = typename vec_t<tplate_t, 4>::type;
+        int N, int H, int W, int K,
+        float * rayposim,
+        float * raydirim,
+        float stepsize,
+        float * tminmaxim,
 
-  dim3 blocksize(blocksizex, blocksizey);
-  dim3 gridsize;
-  if (griddim == 3) {
-    gridsize = dim3((W + blocksize.x - 1) / blocksize.x, (H + blocksize.y - 1) / blocksize.y, N);
-  } else if (griddim == 2) {
-    gridsize = dim3((W + blocksize.x - 1) / blocksize.x, (N * H + blocksize.y - 1) / blocksize.y);
-  } else if (griddim == 1) {
-    gridsize = dim3((N * H * W + blocksize.x - 1) / blocksize.x);
-  }
+        int * sortedobjid,
+        int * nodechildren,
+        float * nodeaabb,
+        float * primpos,
+        float * primrot,
+        float * primscale,
 
-  auto fn = get_fwd_kernel_func<tplate_t>(warp, accum, chlast);
+        int TD, int TH, int TW,
+        float * tplate,
+        int WD, int WH, int WW,
+        float * warp,
 
-  fn<<<gridsize, blocksize, 0, stream>>>(
-      N,
-      H,
-      W,
-      K,
-      MD,
-      MH,
-      MW,
-      reinterpret_cast<const float3*>(rayposim),
-      reinterpret_cast<const float3*>(raydirim),
-      stepsize,
-      reinterpret_cast<const float2*>(tminmaxim),
-      reinterpret_cast<const int*>(sortedobjid),
-      reinterpret_cast<const int2*>(nodechildren),
-      reinterpret_cast<const float3*>(nodeaabb),
-      reinterpret_cast<const tplate_t*>(tplate),
-      reinterpret_cast<const float*>(warp),
-      reinterpret_cast<const float3*>(primpos),
-      reinterpret_cast<const float3*>(primrot),
-      reinterpret_cast<const float3*>(primscale),
-      reinterpret_cast<tplate_vec4*>(rayrgbaim),
-      reinterpret_cast<float3*>(raysatim),
-      reinterpret_cast<int2*>(raytermim),
-      t_im,
-      broadcast_slab,
-      fadescale,
-      fadeexp,
-      termthresh);
+        float * rayrgbaim,
+        float * raysatim,
+        int * raytermim,
+
+        int algorithm,
+        bool sortboxes,
+        int maxhitboxes,
+        bool synchitboxes,
+        bool chlast,
+        float fadescale, 
+        float fadeexp,
+        int accum,
+        float termthresh,
+        int griddim, int blocksizex, int blocksizey,
+        cudaStream_t stream) {
+    dim3 blocksize(blocksizex, blocksizey);
+    dim3 gridsize;
+    gridsize = dim3(
+            (W + blocksize.x - 1) / blocksize.x,
+            (H + blocksize.y - 1) / blocksize.y,
+            N);
+
+    std::shared_ptr<PrimTransfDataBase> primtransf_data;
+    primtransf_data = std::make_shared<PrimTransfSRT::Data>(PrimTransfSRT::Data{
+            PrimTransfDataBase{},
+            K, (float3*)primpos, nullptr,
+            K * 3, (float3*)primrot, nullptr,
+            K, (float3*)primscale, nullptr});
+    std::shared_ptr<PrimSamplerDataBase> primsampler_data;
+    if (algorithm == 1) {
+        primsampler_data = std::make_shared<PrimSamplerTW<true>::Data>(PrimSamplerTW<true>::Data{
+            PrimSamplerDataBase{},
+            fadescale, fadeexp,
+            K * TD * TH * TW * 4, TD, TH, TW, tplate, nullptr,
+            K * WD * WH * WW * 3, WD, WH, WW, warp, nullptr});
+    } else {
+        primsampler_data = std::make_shared<PrimSamplerTW<false>::Data>(PrimSamplerTW<false>::Data{
+            PrimSamplerDataBase{},
+            fadescale, fadeexp,
+            K * TD * TH * TW * 4, TD, TH, TW, tplate, nullptr,
+            0, 0, 0, 0, nullptr, nullptr});
+    }
+    std::shared_ptr<PrimAccumDataBase> primaccum_data = std::make_shared<PrimAccumAdditive::Data>(PrimAccumAdditive::Data{
+            PrimAccumDataBase{},
+            termthresh, H * W, W, 1, (float4*)rayrgbaim, nullptr, (float3*)raysatim});
+
+    std::map<int, mapfn_t> dispatcher = {
+        {0, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<false>, PrimAccumAdditive>)},
+        {1, make_cudacall(raymarch_subset_forward_kernel<512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<true>, PrimAccumAdditive>)}};
+
+    auto iter = dispatcher.find(algorithm);
+    if (iter != dispatcher.end()) {
+        (iter->second)(
+            gridsize, blocksize, stream,
+            N, H, W, K,
+            reinterpret_cast<float3 *>(rayposim),
+            reinterpret_cast<float3 *>(raydirim),
+            stepsize,
+            reinterpret_cast<float2 *>(tminmaxim),
+            reinterpret_cast<int    *>(sortedobjid),
+            reinterpret_cast<int2   *>(nodechildren),
+            reinterpret_cast<float3 *>(nodeaabb),
+            primtransf_data,
+            primsampler_data,
+            primaccum_data);
+    }
 }
 
 void raymarch_backward_cuda(
-    int N,
-    int H,
-    int W,
-    int K,
-    int MD,
-    int MH,
-    int MW,
-    const float* rayposim,
-    const float* raydirim,
-    float stepsize,
-    const float* tminmaxim,
-    const int* sortedobjid,
-    const int* nodechildren,
-    const float* nodeaabb,
-    const float* tplate,
-    const float* warp,
-    const float* primpos,
-    const float* primrot,
-    const float* primscale,
-    const float* rayrgbaim,
-    const float* raysatim,
-    const int* raytermim,
-    const float* grad_rayrgba,
-    float* grad_tplate,
-    float* grad_warp,
-    float* grad_primpos,
-    float* grad_primrot,
-    float* grad_primscale,
-    bool chlast,
-    float fadescale,
-    float fadeexp,
-    int accum,
-    float termthresh,
-    int griddim,
-    int blocksizex,
-    int blocksizey,
-    cudaStream_t stream) {
-  dim3 blocksize(blocksizex, blocksizey);
-  dim3 gridsize;
-  if (griddim == 3) {
-    gridsize = dim3((W + blocksize.x - 1) / blocksize.x, (H + blocksize.y - 1) / blocksize.y, N);
-  } else if (griddim == 2) {
-    gridsize = dim3((W + blocksize.x - 1) / blocksize.x, (N * H + blocksize.y - 1) / blocksize.y);
-  } else if (griddim == 1) {
-    gridsize = dim3((N * H * W + blocksize.x - 1) / blocksize.x);
-  }
+        int N, int H, int W, int K,
+        float * rayposim,
+        float * raydirim,
+        float stepsize,
+        float * tminmaxim,
+        int * sortedobjid,
+        int * nodechildren,
+        float * nodeaabb,
 
-  auto fn = get_bwd_kernel_func<float>(warp, accum, chlast);
+        float * primpos,
+        float * grad_primpos,
+        float * primrot,
+        float * grad_primrot,
+        float * primscale,
+        float * grad_primscale,
 
-  fn<<<gridsize, blocksize, 0, stream>>>(
-      N,
-      H,
-      W,
-      K,
-      MD,
-      MH,
-      MW,
-      reinterpret_cast<const float3*>(rayposim),
-      reinterpret_cast<const float3*>(raydirim),
-      stepsize,
-      reinterpret_cast<const float2*>(tminmaxim),
-      reinterpret_cast<const int*>(sortedobjid),
-      reinterpret_cast<const int2*>(nodechildren),
-      reinterpret_cast<const float3*>(nodeaabb),
-      reinterpret_cast<const float*>(tplate),
-      reinterpret_cast<const float*>(warp),
-      reinterpret_cast<const float3*>(primpos),
-      reinterpret_cast<const float3*>(primrot),
-      reinterpret_cast<const float3*>(primscale),
-      reinterpret_cast<const float4*>(rayrgbaim),
-      reinterpret_cast<const float3*>(raysatim),
-      reinterpret_cast<const int2*>(raytermim),
-      reinterpret_cast<const float4*>(grad_rayrgba),
-      reinterpret_cast<float*>(grad_tplate),
-      reinterpret_cast<float*>(grad_warp),
-      reinterpret_cast<float3*>(grad_primpos),
-      reinterpret_cast<float3*>(grad_primrot),
-      reinterpret_cast<float3*>(grad_primscale),
-      fadescale,
-      fadeexp,
-      termthresh);
-}
+        int TD, int TH, int TW,
+        float * tplate,
+        float * grad_tplate,
+        int WD, int WH, int WW,
+        float * warp,
+        float * grad_warp,
 
-// Explicit instantiations for float + uint templates. This allows us to split
-// the CUDA code from the PyTorch extension code and have the latter in its own
-// cpp file.
-void raymarch_forward_cuda_float(
-    int N,
-    int H,
-    int W,
-    int K,
-    int MD,
-    int MH,
-    int MW,
-    const float* rayposim,
-    const float* raydirim,
-    float stepsize,
-    const float* tminmaxim,
-    const int* sortedobjid,
-    const int* nodechildren,
-    const float* nodeaabb,
-    const float* tplate,
-    const float* warp,
-    const float* primpos,
-    const float* primrot,
-    const float* primscale,
-    float* rayrgbaim,
-    float* raysatim,
-    int* raytermim,
-    float* t_im,
-    bool chlast,
-    float fadescale,
-    float fadeexp,
-    int accum,
-    float termthresh,
-    int griddim,
-    int blocksizex,
-    int blocksizey,
-    bool broadcast_slab,
-    cudaStream_t stream) {
-  raymarch_forward_cuda(
-      N,
-      H,
-      W,
-      K,
-      MD,
-      MH,
-      MW,
-      rayposim,
-      raydirim,
-      stepsize,
-      tminmaxim,
-      sortedobjid,
-      nodechildren,
-      nodeaabb,
-      tplate,
-      warp,
-      primpos,
-      primrot,
-      primscale,
-      rayrgbaim,
-      raysatim,
-      raytermim,
-      t_im,
-      chlast,
-      fadescale,
-      fadeexp,
-      accum,
-      termthresh,
-      griddim,
-      blocksizex,
-      blocksizey,
-      broadcast_slab,
-      stream);
-}
+        float * rayrgbaim,
+        float * grad_rayrgba,
+        float * raysatim,
+        int * raytermim,
 
-void raymarch_forward_cuda_uint(
-    int N,
-    int H,
-    int W,
-    int K,
-    int MD,
-    int MH,
-    int MW,
-    const float* rayposim,
-    const float* raydirim,
-    float stepsize,
-    const float* tminmaxim,
-    const int* sortedobjid,
-    const int* nodechildren,
-    const float* nodeaabb,
-    const uint8_t* tplate,
-    const float* warp,
-    const float* primpos,
-    const float* primrot,
-    const float* primscale,
-    uint8_t* rayrgbaim,
-    float* t_im,
-    bool chlast,
-    float fadescale,
-    float fadeexp,
-    int accum,
-    float termthresh,
-    int griddim,
-    int blocksizex,
-    int blocksizey,
-    bool broadcast_slab,
-    cudaStream_t stream) {
-  raymarch_forward_cuda(
-      N,
-      H,
-      W,
-      K,
-      MD,
-      MH,
-      MW,
-      rayposim,
-      raydirim,
-      stepsize,
-      tminmaxim,
-      sortedobjid,
-      nodechildren,
-      nodeaabb,
-      tplate,
-      warp,
-      primpos,
-      primrot,
-      primscale,
-      rayrgbaim,
-      nullptr,
-      nullptr,
-      t_im,
-      chlast,
-      fadescale,
-      fadeexp,
-      accum,
-      termthresh,
-      griddim,
-      blocksizex,
-      blocksizey,
-      broadcast_slab,
-      stream);
+        int algorithm, bool sortboxes, int maxhitboxes, bool synchitboxes,
+        bool chlast, float fadescale, float fadeexp, int accum, float termthresh,
+        int griddim, int blocksizex, int blocksizey,
+
+        cudaStream_t stream) {
+    dim3 blocksize(blocksizex, blocksizey);
+    dim3 gridsize;
+    gridsize = dim3(
+            (W + blocksize.x - 1) / blocksize.x,
+            (H + blocksize.y - 1) / blocksize.y,
+            N);
+
+    std::shared_ptr<PrimTransfDataBase> primtransf_data;
+    primtransf_data = std::make_shared<PrimTransfSRT::Data>(PrimTransfSRT::Data{
+        PrimTransfDataBase{},
+        K, (float3*)primpos, (float3*)grad_primpos,
+        K * 3, (float3*)primrot, (float3*)grad_primrot,
+        K, (float3*)primscale, (float3*)grad_primscale});
+    std::shared_ptr<PrimSamplerDataBase> primsampler_data;
+    if (algorithm == 1) {
+        primsampler_data = std::make_shared<PrimSamplerTW<true>::Data>(PrimSamplerTW<true>::Data{
+            PrimSamplerDataBase{},
+            fadescale, fadeexp,
+            K * TD * TH * TW * 4, TD, TH, TW, tplate, grad_tplate,
+            K * WD * WH * WW * 3, WD, WH, WW, warp, grad_warp});
+    } else {
+        primsampler_data = std::make_shared<PrimSamplerTW<false>::Data>(PrimSamplerTW<false>::Data{
+            PrimSamplerDataBase{},
+            fadescale, fadeexp,
+            K * TD * TH * TW * 4, TD, TH, TW, tplate, grad_tplate,
+            0, 0, 0, 0, nullptr, nullptr});
+    }
+    std::shared_ptr<PrimAccumDataBase> primaccum_data = std::make_shared<PrimAccumAdditive::Data>(PrimAccumAdditive::Data{
+            PrimAccumDataBase{},
+            termthresh, H * W, W, 1, (float4*)rayrgbaim, (float4*)grad_rayrgba, (float3*)raysatim});
+
+    std::map<int, mapfn_t> dispatcher = {
+        {0, make_cudacall(raymarch_subset_backward_kernel<true, 512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<false>, PrimAccumAdditive>)},
+        {1, make_cudacall(raymarch_subset_backward_kernel<true, 512, 4, raysubset_t, PrimTransfSRT, PrimSamplerTW<true>, PrimAccumAdditive>)}};
+
+    auto iter = dispatcher.find(algorithm);
+    if (iter != dispatcher.end()) {
+        (iter->second)(
+            gridsize, blocksize, stream,
+            N, H, W, K,
+            reinterpret_cast<float3 *>(rayposim),
+            reinterpret_cast<float3 *>(raydirim),
+            stepsize,
+            reinterpret_cast<float2 *>(tminmaxim),
+            reinterpret_cast<int    *>(sortedobjid),
+            reinterpret_cast<int2   *>(nodechildren),
+            reinterpret_cast<float3 *>(nodeaabb),
+            primtransf_data,
+            primsampler_data,
+            primaccum_data);
+    }
 }

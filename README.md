@@ -10,8 +10,33 @@ If you find this code or the accompanying data useful, please cite our work
 TODO(julieta) bibtex here
 ```
 
+## Compiling extensions
+We need to compile the CUDA raymarcher and some utilities. This can be done with
+
+```bash
+cd extensions/mvpraymarch
+make
+```
+and 
+```bash
+cd extensions/utils
+make
+```
+
 ## Tests
 You can run tests with `pytest tests/`
+
+## Train
+To train a simple model you can run
+```bash
+python ddp-train.py config.py
+```
+
+## Visualization
+TODO
+
+## Metrics
+TODO
 
 
 ## TODOs before releasing
@@ -29,7 +54,9 @@ You can run tests with `pytest tests/`
 * Figure out pip/conda install for the repo (maybe not? since it's not intended to be used as a library)
 * We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)
 * Write fast download script
-* Download 
+* Download script
+* Nice tensorboard, but not too intrusive with the main training loop
+* Pytorch lightning for multi-GPU?
 
 
 ### Assets and asset provenance
@@ -48,7 +75,8 @@ north of 30MB
 * Add support for FLAME topology and meshes -- show that this is worse than our registered mesh
 
 ### Extensions
-* Swap the current `extensions` for `extension-mvp`, which are taken from [the MVP repo](https://github.com/facebookresearch/mvp/tree/main/extensions).
+* ~~Swap the current `extensions` for `extension-mvp`, which are taken from [the MVP repo](https://github.com/facebookresearch/mvp/tree/main/extensions).~~
+* ~~Add instructions for how to compile said extensions~~
 * ~~Remove wuffs (`png_reader`) extension - I don't think it's used?~~
 
 ### Models

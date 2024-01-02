@@ -38,7 +38,7 @@ def get_autoencoder(dataset, assetpath: str):
     import models.decoders.assembler as decoderlib
     import models.encoders.expression as expression_encoder_lib
     import models.encoders.identity as identity_encoder_lib
-    import models.raymarchers.mvpraymarcher_new as raymarcherlib
+    import models.raymarchers.mvpraymarcher as raymarcherlib
 
     allcameras = dataset.get_allcameras()
     ncams = len(allcameras)
@@ -88,10 +88,8 @@ def get_autoencoder(dataset, assetpath: str):
         primsize=(8, 8, 8),
     )
 
-    config = ObjDict(
-        {"render": {"raymarcher_options": {"volume_radius": volradius, "chlast": False}}}
-    )  ################## change to true for fast rendering?
-    raymarcher = raymarcherlib.Raymarcher(config)
+    # NOTE(julieta) this ray marcher expects the channels of the template to be last by default
+    raymarcher = raymarcherlib.Raymarcher(volradius)
 
     bgmodel = bglib.BackgroundModelSimple(len(allcameras), len(dataset.identities))
     ae = aemodel.Autoencoder(

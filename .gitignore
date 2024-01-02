@@ -12,3 +12,4 @@ extensions-mvp/*/**.so
 # Compiled extension kernels
 build/*/**
 extensions/*/**.so
+extensions/**/build

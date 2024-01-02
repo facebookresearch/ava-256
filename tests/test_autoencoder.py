@@ -6,15 +6,14 @@ import torch.nn as nn
 from PIL import Image
 
 import models.autoencoder as aemodel
-import models.bg.mlp2d_multi as bglib
+import models.bg.mlp2d as bglib
 import models.bottlenecks.vae as vae
-import models.colorcals.colorcal_multi as colorcalib
+import models.colorcals.colorcal as colorcalib
 import models.decoders.assembler as decoderlib
 import models.encoders.expression as expression_encoder_lib
 import models.encoders.identity as identity_encoder_lib
 import models.raymarchers.mvpraymarcher_new as raymarcherlib
 from config import ObjDict
-from models.encoders.expression import ExpressionEncoder
 from utils import create_uv_baridx, load_krt, load_obj
 
 
@@ -25,7 +24,7 @@ def autoencoder() -> aemodel.Autoencoder:
     ncams = len(krt_dicts)
     nids = 1
 
-    colorcal = colorcalib.Colorcal2(ncams, nids)
+    colorcal = colorcalib.Colorcal(ncams, nids)
     dotobj = load_obj("assets/face_topology.obj")
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 

@@ -257,7 +257,7 @@ class DecoderAssembler(nn.Module):
         primrgb = self.rgbdec(expr_encoding, z_tex, b_tex, view=viewdirs)
 
         # TODO(julieta) this is denormalizing with hardcoded values... do something about this
-        template = torch.cat([F.relu(primrgb * 25.0 + 100.0), F.relu(primalpha)], dim=2)
+        template = torch.cat([F.relu(primrgb * 25.0 + 100.0), F.relu(primalpha)], dim=-1)
 
         return {
             "verts": predicted_geo,

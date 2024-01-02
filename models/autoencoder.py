@@ -3,11 +3,13 @@ Volumetric autoencoder (image -> encoding -> volume -> image)
 """
 from typing import Dict, Optional, Set
 
+import einops
 import numpy as np
 import torch
 import torch.nn as nn
 
-from extensions.computeraydirs.computeraydirs import compute_raydirs
+from extensions.utils.utils import compute_raydirs
+from models.raymarchers.mvpraymarcher import Raymarcher
 
 
 class Autoencoder(nn.Module):
@@ -19,7 +21,7 @@ class Autoencoder(nn.Module):
         expression_encoder: nn.Module,
         bottleneck: nn.Module,
         decoder_assembler: nn.Module,
-        raymarcher: nn.Module,
+        raymarcher: Raymarcher,
         colorcal: Optional[nn.Module] = None,
         bgmodel: Optional[nn.Module] = None,
     ):
@@ -135,17 +137,18 @@ class Autoencoder(nn.Module):
             dim=-1,
         )
 
-        # Compute ray directions
+        # Compute ray directions for ray marching
         raypos, raydir, tminmax = compute_raydirs(
             campos, camrot, focal, princpt, pixelcoords, self.raymarcher.volume_radius
         )
 
         # Ray march across the ray directions to see the output image
+
         rayrgb, rayalpha, _, pos_img = self.raymarcher(
             raypos,
             raydir,
             tminmax,
-            outputs=decout,
+            decout,
             with_pos_img=("pos_img" in output_set),
         )
 
@@ -158,7 +161,7 @@ class Autoencoder(nn.Module):
             # TODO(julieta) raise an error if bg is None and either camidx or idindex are None
             bg = self.bgmodel(camindex, idindex, samplecoords)
 
-        # 6. matting
+        # 5. matting
         if bg is not None:
             rayrgb = rayrgb + (1.0 - rayalpha) * bg
         else:

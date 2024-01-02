@@ -206,22 +206,11 @@ if __name__ == "__main__":
                 include_dirs=[common_incdir],
                 extra_compile_args={"cxx": cxx_args, "nvcc": nvcc_args},
             ),
-            CppExtension(
-                "extensions.png_reader.png_reader_ext",
-                sources=[
-                    "extensions/png_reader/module.cpp",
-                ],
-                extra_link_args=["-flto"],
-                include_dirs=["src/zip_reader"],
-                extra_compile_args=cxx_args,
-            ),
         ],
         cmdclass={"build_ext": BuildExtension2},
         packages=[
             "extensions",
             "extensions.mvpraymarch",
-            "extensions.primintersection",
             "extensions.computeraydirs",
-            "extensions.png_reader",
         ],
     )

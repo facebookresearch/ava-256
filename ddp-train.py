@@ -129,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=4e-4, help="Learning rate passed as it to the optimizer")
     parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
     parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
-    parser.add_argument("--downsample", type=int, default=8, help="image downsampling factor at data loader")
+    parser.add_argument("--downsample", type=int, default=6, help="image downsampling factor at data loader")
     args = parser.parse_args()
 
     # TODO(julieta) remove all references to SLURM variables

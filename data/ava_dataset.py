@@ -247,7 +247,6 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
                 dtype=np.float32,
             ).reshape(-1, 3)
 
-            # Didn't find significant speed difference between cv2 and PIL
             tex_path = self.dir / f"unwrapped_uv_1024/{neut_seg}/average/{neut_frame}.png"
             tex = np.asarray(Image.open(tex_path))
             tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
