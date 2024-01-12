@@ -63,11 +63,11 @@ TODO
 * Should we use grown neck geometry? Results look much better and avoids some of the worst pathologies MVP
 * I'm Using CARE's (Chenglei's?) `load_obj` function, because all the darn off the shelf libraries that can load obj 
 files have issues, see if we can switch to something else
-* I ported `make_closest_uv_barys` and its dependencies to this repo hoping I'd be able to re-compute the arguments
-of the encoders (`bary_idx` and `bary_img` on the fly, instead of giving people the pre-computed images, since that's
-north of 30MB
-  * :fire: `make_closest_uv_barys` takes ~38 seconds for a size of 1024 on my threadripper. There is something seriously wrong with this function and we should make it faster. Run `pytest tests/test_expression_encoder.py test_sizes` to repro the slowness
-  * I have not been able to fully reproduce the pre-computed `bary_img`, see `pytest tests/test_expression_encoder.py` for my failed attempts. We should either get a consistent repro, or test that the newly-computed image produces reasonable results
+* ~~I ported `make_closest_uv_barys` and its dependencies to this repo hoping I'd be able to re-compute the arguments~~
+~~of the encoders (`bary_idx` and `bary_img` on the fly, instead of giving people the pre-computed images, since that's~~
+~~north of 30MB~~
+  * ~~:fire: `make_closest_uv_barys` takes ~38 seconds for a size of 1024 on my threadripper. There is something seriously wrong with this function and we should make it faster. Run `pytest tests/test_expression_encoder.py test_sizes` to repro the slowness~~ Fixed with a fast IGL function for distance computation
+  * ~~I have not been able to fully reproduce the pre-computed `bary_img`, see `pytest tests/test_expression_encoder.py` for my failed attempts. We should either get a consistent repro, or test that the newly-computed image produces reasonable results~~ Verified that we can get reasonable results with on-the-fly assets
   * `Trimesh` and friends is a long list of dependencies (`rtree`, `scipy`), consider rewriting the whole thing
 
 

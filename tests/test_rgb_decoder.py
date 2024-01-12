@@ -25,8 +25,6 @@ def test_rgb_decoder_sizes():
     # fmt: on
 
     view = torch.rand(1, 3)
-
     decout = decoder(ex_enc, id_enc, id_biases, view)
 
-    print(decout.shape)
-    assert decout.shape == torch.Size([1, nprims, outch, *primsize])
+    assert decout.shape == torch.Size([1, nprims, *primsize, outch])

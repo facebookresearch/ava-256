@@ -1,16 +1,34 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
 
+import einops
 import numpy as np
+
+# import open3d as o3d
+import torch
 import torch as th
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
-from rtree import Rtree  # noqa
+# from rtree import Rtree  # noqa
+from trimesh import Trimesh
+from trimesh.triangles import points_to_barycentric
 
 # from sklearn.neighbors import KDTree  # noqa
-from trimesh import Trimesh
-from trimesh.proximity import closest_point
-from trimesh.triangles import points_to_barycentric
+
+
+try:
+    from igl import point_mesh_squared_distance
+
+    def closest_point(mesh, points):
+        """Helper function that mimics trimesh.proximity.closest_point but uses IGL for faster queries."""
+        v = mesh.vertices
+        vi = mesh.faces
+        dist, face_idxs, p = point_mesh_squared_distance(points, v, vi)
+        return p, dist, face_idxs
+
+except ImportError:
+    from trimesh.proximity import closest_point
+
 
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
@@ -143,6 +161,7 @@ def closest_point_barycentrics(v, vi, points):
     """
     mesh = Trimesh(vertices=v, faces=vi)
     p, _, face_idxs = closest_point(mesh, points)
+
     barys = points_to_barycentric(mesh.triangles[face_idxs], p)
     b0, b1, b2 = np.split(barys, 3, axis=1)
 
@@ -220,25 +239,33 @@ def make_closest_uv_barys(
         return index_img, bary_img, None
 
 
-def create_uv_baridx(geofile: str, trifile: str, barfiles: List[str]):
+def create_uv_baridx(objpath: str, resolution: int = 1024):
+    """
+    TODO(julieta) document
+    """
+
     import cv2
 
-    dotobj = load_obj(geofile)
+    dotobj = load_obj(objpath)
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
-    vt[:, 1] = 1 - vt[:, 1]  # note: flip y-axis
+    index_img, bary_img, _ = make_closest_uv_barys(
+        torch.from_numpy(vt),
+        torch.from_numpy(vti),
+        uv_shape=resolution,
+        flip_uv=False,
+    )
+    bary_img = einops.rearrange(bary_img, "H W C -> C H W")
 
-    uvtri = np.genfromtxt(trifile, dtype=np.int32)
-    bar = []
-    for i in range(3):
-        bar.append(np.genfromtxt(barfiles[i], dtype=np.float32))
+    index_img = index_img.numpy()
+    bary_img = bary_img.numpy()
 
-    idx0 = cv2.flip(vi[uvtri, 0], flipCode=0)
-    idx1 = cv2.flip(vi[uvtri, 1], flipCode=0)
-    idx2 = cv2.flip(vi[uvtri, 2], flipCode=0)
-    bar0 = cv2.flip(bar[0], flipCode=0)
-    bar1 = cv2.flip(bar[1], flipCode=0)
-    bar2 = cv2.flip(bar[2], flipCode=0)
+    idx0 = cv2.flip(vi[index_img, 0], flipCode=0)
+    idx1 = cv2.flip(vi[index_img, 1], flipCode=0)
+    idx2 = cv2.flip(vi[index_img, 2], flipCode=0)
+    bar0 = cv2.flip(bary_img[0], flipCode=0)
+    bar1 = cv2.flip(bary_img[1], flipCode=0)
+    bar2 = cv2.flip(bary_img[2], flipCode=0)
 
     return {
         "uv_idx": np.concatenate((idx0[None, :, :], idx1[None, :, :], idx2[None, :, :]), axis=0),

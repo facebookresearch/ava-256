@@ -46,7 +46,7 @@ def test_geometry_decoder_sizes():
         ex_enc, id_enc, id_biases
     )
 
-    assert decout.shape == torch.Size([1, nprims, 1, *primsize])
+    assert decout.shape == torch.Size([1, nprims, *primsize, 1])
     assert geo.shape == verts.shape
     assert primitive_position_residuals.shape == torch.Size([1, nprims, 3])
     assert primitive_rotation_residuals.shape == torch.Size([1, nprims, 3])

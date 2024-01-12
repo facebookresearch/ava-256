@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from models.decoders.assembler import DecoderAssembler
-from utils import load_obj
+from utils import create_uv_baridx
 
 
 def test_decoder_assembler_sizes():
@@ -14,16 +14,20 @@ def test_decoder_assembler_sizes():
     primsize = (8, 8, 8)
 
     # Load topology
-    dotobj = load_obj("assets/face_topology.obj")
-    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
+    objpath = "assets/face_topology.obj"
+    resolution = 1024
+    uvdata = create_uv_baridx(objpath, resolution)
+    vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
 
     # Load a dummy geometry object to get plausible mean and std verts
     verts = torch.from_numpy(np.fromfile("assets/021924.bin", dtype=np.float32).reshape(1, -1, 3))
 
     decoder = DecoderAssembler(
-        vt=np.array(vt),
-        vi=np.array(vi),
-        vti=np.array(vti),
+        vt=np.array(vt, dtype=np.float32),
+        vi=np.array(vi, dtype=np.int32),
+        vti=np.array(vti, dtype=np.int32),
+        idxim=uvdata["uv_idx"],
+        barim=uvdata["uv_bary"],
         vertmean=verts,
         vertstd=verts,
         volradius=256.0,
@@ -54,7 +58,7 @@ def test_decoder_assembler_sizes():
     decouts = decoder(id_cond, ex_enc, view)
 
     assert decouts["verts"].shape == verts.shape
-    assert decouts["template"].shape == torch.Size([1, 128**2, 4, *primsize])
+    assert decouts["template"].shape == torch.Size([1, 128**2, *primsize, 4])
     assert decouts["primpos"].shape == torch.Size([1, 128**2, 3])
     assert decouts["primrot"].shape == torch.Size([1, 128**2, 3, 3])
     assert decouts["primscale"].shape == torch.Size([1, 128**2, 3])

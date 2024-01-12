@@ -63,14 +63,8 @@ def test_identity_encoder_sizes():
     avgtex = np.array(Image.open("assets/021924_avgtex.png")).astype(np.float32)
     avgtex = torch.from_numpy(einops.rearrange(avgtex, "h w c -> 1 c h w"))
 
-    # fd-data -- SAME as in RSC
-    uvpath = "assets/rsc-assets/fd-data/"
-    resolution = 1024
-    trifile = f"{uvpath}/uv_tri_{resolution}_orig.txt"
-    barfiles = [f"{uvpath}/uv_bary{i}_{resolution}_orig.txt" for i in range(3)]
-    uvdata = create_uv_baridx("assets/face_topology.obj", trifile, barfiles)
-
     # Create identity encoder
+    uvdata = create_uv_baridx("assets/face_topology.obj", resolution=1024)
     identity_encoder = IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
     with torch.no_grad():
         encoder_outs = identity_encoder(verts, avgtex)

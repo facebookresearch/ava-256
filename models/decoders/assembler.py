@@ -1,6 +1,7 @@
 from math import sqrt
 from typing import Dict, Optional, Tuple
 
+import einops
 import numpy as np
 import torch
 import torch.nn as nn
@@ -17,6 +18,8 @@ class DecoderAssembler(nn.Module):
         vt: np.ndarray,
         vi: np.ndarray,
         vti: np.ndarray,
+        idxim: np.ndarray,
+        barim: np.ndarray,
         vertmean: torch.Tensor,
         vertstd: torch.Tensor,
         volradius: float,
@@ -46,21 +49,13 @@ class DecoderAssembler(nn.Module):
             boxsize=primsize[0],
         )
 
-        self.register_buffer("vt", torch.tensor(vt), persistent=False)
         self.register_buffer("vertmean", vertmean, persistent=False)
         self.vertstd = vertstd
 
-        # TODO(julieta) compute these on the fly, or commit them to the repo -- 30MB tho!
-        idximpath = f"assets/rsc-assets/idxmap"
-        self.register_buffer(
-            "idxim", torch.tensor(np.load("{}/retop_idxim_1024.npy".format(idximpath))).long(), persistent=False
-        )
-        self.register_buffer(
-            "tidxim", torch.tensor(np.load("{}/retop_tidxim_1024.npy".format(idximpath))).long(), persistent=False
-        )
-        self.register_buffer(
-            "barim", torch.tensor(np.load("{}/retop_barim_1024.npy".format(idximpath))), persistent=False
-        )
+        idxim = einops.rearrange(idxim, "C H W -> H W C")
+        barim = einops.rearrange(barim, "C H W -> H W C")
+        self.register_buffer("idxim", torch.tensor(idxim).long(), persistent=False)
+        self.register_buffer("barim", torch.tensor(barim), persistent=False)
 
         self.register_buffer("adaptwarps", torch.zeros(self.nprims))
 

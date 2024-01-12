@@ -12,8 +12,7 @@ import models.colorcals.colorcal as colorcalib
 import models.decoders.assembler as decoderlib
 import models.encoders.expression as expression_encoder_lib
 import models.encoders.identity as identity_encoder_lib
-import models.raymarchers.mvpraymarcher_new as raymarcherlib
-from config import ObjDict
+import models.raymarchers.mvpraymarcher as raymarcherlib
 from utils import create_uv_baridx, load_krt, load_obj
 
 
@@ -21,38 +20,28 @@ from utils import create_uv_baridx, load_krt, load_obj
 def autoencoder() -> aemodel.Autoencoder:
     krt_dicts = load_krt("assets/KRT")
 
-    ncams = len(krt_dicts)
-    nids = 1
-
-    colorcal = colorcalib.Colorcal(ncams, nids)
-    dotobj = load_obj("assets/face_topology.obj")
-    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
-
     verts = torch.from_numpy(np.fromfile("assets/021924.bin", dtype=np.float32).reshape(1, -1, 3))
 
     # load per-textel triangulation indices
-    # fd-data -- SAME as in RSC
-    uvpath = "assets/rsc-assets/fd-data/"
     resolution = 1024
-    trifile = f"{uvpath}/uv_tri_{resolution}_orig.txt"
-    barfiles = []
-    for i in range(3):
-        barfiles.append(f"{uvpath}/uv_bary{i}_{resolution}_orig.txt")
-    uvdata = create_uv_baridx("assets/face_topology.obj", trifile, barfiles)
+    uvdata = create_uv_baridx("assets/face_topology.obj", resolution)
+    vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
 
     # Encoders
-    expression_encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
     id_encoder = identity_encoder_lib.IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
+    expression_encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
 
     # VAE bottleneck for the expression encoder
     bottleneck = vae.VAE_bottleneck(64, 16)
 
     # Decoder
     volradius = 256.0
-    decoder = decoderlib.DecoderAssembler(
-        vt=np.array(vt),
-        vi=np.array(vi),
-        vti=np.array(vti),
+    decoder_assembler = decoderlib.DecoderAssembler(
+        vt=np.array(vt, dtype=np.float32),
+        vi=np.array(vi, dtype=np.int32),
+        vti=np.array(vti, dtype=np.int32),
+        idxim=uvdata["uv_idx"],
+        barim=uvdata["uv_bary"],
         vertmean=verts,
         vertstd=verts,
         volradius=volradius,
@@ -60,8 +49,11 @@ def autoencoder() -> aemodel.Autoencoder:
         primsize=(8, 8, 8),
     )
 
-    config = ObjDict({"render": {"raymarcher_options": {"volume_radius": volradius, "chlast": False}}})
-    raymarcher = raymarcherlib.Raymarcher(config)
+    ncams = len(krt_dicts)
+    nids = 1
+
+    raymarcher = raymarcherlib.Raymarcher(volradius)
+    colorcal = colorcalib.Colorcal(ncams, nids)
     bgmodel = bglib.BackgroundModelSimple(ncams, nids)
 
     # Put together the Megazord
@@ -69,7 +61,7 @@ def autoencoder() -> aemodel.Autoencoder:
         identity_encoder=id_encoder,
         expression_encoder=expression_encoder,
         bottleneck=bottleneck,
-        decoder_assembler=decoder,
+        decoder_assembler=decoder_assembler,
         raymarcher=raymarcher,
         colorcal=colorcal,
         bgmodel=bgmodel,

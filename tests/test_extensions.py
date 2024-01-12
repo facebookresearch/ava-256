@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 import torch
 
-from config import ObjDict
 from extensions.utils.utils import compute_raydirs
 from models.raymarchers.mvpraymarcher import Raymarcher as RaymarcherOSS
 from utils import load_krt

@@ -5,9 +5,9 @@ def generate_geomap(geo: torch.Tensor, uv_tidx: torch.Tensor, uv_bary: torch.Ten
     """
     Create a geometry image given a series of vertices and their topology
     Args:
-        geo: [N, 3] tensor with vertices
-        uv_tidx: [M, M] tensor with geometry image indices
-        uv_bary: [M, M, 3] tensor with geometry image barycentric coordinates
+        geo: [1, N, 3] tensor with N vertices
+        uv_tidx: [3, M, M] tensor with geometry image indices
+        uv_bary: [3, M, M] tensor with geometry image barycentric coordinates
     Returns:
       An [M, M, 2] tensor representing the input geometry as an image
 
@@ -16,6 +16,15 @@ def generate_geomap(geo: torch.Tensor, uv_tidx: torch.Tensor, uv_bary: torch.Ten
       very very slow (see https://github.com/pytorch/pytorch/issues/41162#issuecomment-655834491).
     """
 
+    # NOTE(julieta) this function gets called a couple times per iteration, so asserts can add up. Disabling for speed.
+    # assert geo.ndim == 3
+    # assert uv_tidx.ndim == 3
+    # assert uv_bary.ndim == 3
+
+    # assert geo.shape[2] == 3
+    # assert uv_tidx.shape[1] == uv_tidx.shape[2]
+    # assert uv_tidx.shape[2] == uv_bary.shape[2]
+
     n = geo.shape[0]
     g = geo.view(n, -1, 3).permute(0, 2, 1)
     geomap = (
@@ -23,4 +32,5 @@ def generate_geomap(geo: torch.Tensor, uv_tidx: torch.Tensor, uv_bary: torch.Ten
         + g[:, :, uv_tidx[1]] * uv_bary[1][None, None, :, :]
         + g[:, :, uv_tidx[2]] * uv_bary[2][None, None, :, :]
     )
+
     return geomap

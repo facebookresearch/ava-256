@@ -13,14 +13,13 @@
 # for change resolution : pass imagesize argument, reset downsample factor, and set subsample size (HEIGHT)
 #   in training mode: downsample factor: 2 more --> 1K H by 667 W --> subsample height : 384
 
-import json
 import os
 from typing import Dict, Set
 
 import numpy as np
 import torch
 
-from utils import create_uv_baridx, load_obj
+from utils import create_uv_baridx
 
 
 def get_renderoptions():
@@ -29,7 +28,6 @@ def get_renderoptions():
 
 def get_autoencoder(dataset, assetpath: str):
     import torch
-    import torch.nn as nn
 
     import models.autoencoder as aemodel
     import models.bg.mlp2d as bglib
@@ -42,31 +40,18 @@ def get_autoencoder(dataset, assetpath: str):
 
     allcameras = dataset.get_allcameras()
     ncams = len(allcameras)
-    width, height = dataset.get_img_size()
 
     print("@@@ Get autoencoder ABLATION CONFIG FILE : lenth of data set : {}".format(len(dataset.identities)))
-
-    colorcal = colorcalib.Colorcal(len(dataset.get_allcameras()), len(dataset.identities))
-    objpath = f"{assetpath}/geotextop.obj"
-
-    dotobj = load_obj(objpath)
-    vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
-    vt = np.array(vt, dtype=np.float32)
-    vi = np.array(vi, dtype=np.int32)
-    vti = np.array(vti, dtype=np.int32)
-
     print(f"dataset vertmean: {dataset.vertmean.shape}")
 
     vertmean = torch.from_numpy(dataset.vertmean)
     vertstd = dataset.vertstd
 
     # load per-textel triangulation indices
+    objpath = f"{assetpath}/retop.obj"
     resolution = 1024
-    geofile = f"{assetpath}/retop.obj"
-    uvpath = f"{assetpath}/fd-data/"
-    trifile = f"{uvpath}/uv_tri_{resolution}_orig.txt"
-    barfiles = [f"{uvpath}/uv_bary{i}_{resolution}_orig.txt" for i in range(3)]
-    uvdata = create_uv_baridx(geofile, trifile, barfiles)
+    uvdata = create_uv_baridx(objpath, resolution)
+    vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
 
     # Encoders
     expression_encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
@@ -78,9 +63,11 @@ def get_autoencoder(dataset, assetpath: str):
     # Decoder
     volradius = 256.0
     decoder = decoderlib.DecoderAssembler(
-        vt,
-        vi,
-        vti,
+        vt=np.array(vt, dtype=np.float32),
+        vi=np.array(vi, dtype=np.int32),
+        vti=np.array(vti, dtype=np.int32),
+        idxim=uvdata["uv_idx"],
+        barim=uvdata["uv_bary"],
         vertmean=vertmean,
         vertstd=vertstd,
         volradius=volradius,
@@ -90,8 +77,9 @@ def get_autoencoder(dataset, assetpath: str):
 
     # NOTE(julieta) this ray marcher expects the channels of the template to be last by default
     raymarcher = raymarcherlib.Raymarcher(volradius)
+    colorcal = colorcalib.Colorcal(len(dataset.get_allcameras()), len(dataset.identities))
+    bgmodel = bglib.BackgroundModelSimple(ncams, len(dataset.identities))
 
-    bgmodel = bglib.BackgroundModelSimple(len(allcameras), len(dataset.identities))
     ae = aemodel.Autoencoder(
         identity_encoder=id_encoder,
         expression_encoder=expression_encoder,
@@ -381,64 +369,3 @@ class Render:
             return data.utils.ColCatDataset(camdataset, dataset)
         else:
             return dataset
-
-
-class ObjDict:
-    def __init__(self, entries):
-        self.add_entries_(entries)
-
-    def keys(self):
-        return self.__dict__.keys()
-
-    def values(self):
-        return self.__dict__.values()
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __delitem__(self, key):
-        return self.__dict__.__delitem__(key)
-
-    def __contains__(self, key):
-        return key in self.__dict__
-
-    def __repr__(self):
-        return self.__dict__.__repr__()
-
-    def __getattr__(self, attr):
-        if attr.startswith("__"):
-            return self.__getattribute__(attr)
-        if attr not in self.__dict__:
-            self.__dict__[attr] = ObjDict({})
-        return self.__dict__[attr]
-
-    def items(self):
-        return self.__dict__.items()
-
-    def __iter__(self):
-        return iter(self.items())
-
-    def add_entries_(self, entries, overwrite=True):
-        for key, value in entries.items():
-            if key not in self.__dict__:
-                if isinstance(value, dict):
-                    self.__dict__[key] = ObjDict(value)
-                else:
-                    self.__dict__[key] = value
-            else:
-                if isinstance(value, dict):
-                    self.__dict__[key].add_entries_(entries=value, overwrite=overwrite)
-                elif overwrite or self.__dict__[key] is None:
-                    self.__dict__[key] = value
-
-    def serialize(self):
-        return json.dumps(self, default=self.obj_to_dict, indent=4)
-
-    def obj_to_dict(self, obj):
-        return obj.__dict__
-
-    def get(self, key, default=None):
-        return self.__dict__.get(key, default)
