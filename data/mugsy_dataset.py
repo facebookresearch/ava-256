@@ -440,7 +440,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             # ididx and camidx
             idindex=0,
             camindex=self.camera_map[camera_id],  # TODO handle for multi-id
-            bg=bg_img,  # background image
+            # bg=bg_img,  # background image  # TODO(julieta) this conflicts
         )
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:

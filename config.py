@@ -48,7 +48,7 @@ def get_autoencoder(dataset, assetpath: str):
     vertstd = dataset.vertstd
 
     # load per-textel triangulation indices
-    objpath = f"{assetpath}/retop.obj"
+    objpath = f"{assetpath}/face_topology.obj"
     resolution = 1024
     uvdata = create_uv_baridx(objpath, resolution)
     vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
@@ -155,7 +155,7 @@ class ProgressWriterNoBG:
         outpath = os.path.dirname(__file__)
         if imagename is None:
             Image.fromarray(np.clip(imgout, 0, 255).astype(np.uint8)).save(
-                os.path.join(outpath, "prog_{:06}.jpg".format(iternum))
+                os.path.join(outpath, "prog_{:06}.png".format(iternum))
             )
         else:
             Image.fromarray(np.clip(imgout, 0, 255).astype(np.uint8)).save(os.path.join(outpath, imagename))

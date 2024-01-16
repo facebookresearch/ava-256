@@ -17,7 +17,7 @@ We need to compile the CUDA raymarcher and some utilities. This can be done with
 cd extensions/mvpraymarch
 make
 ```
-and 
+and
 ```bash
 cd extensions/utils
 make
@@ -27,9 +27,25 @@ make
 You can run tests with `pytest tests/`
 
 ## Train
-To train a simple model you can run
+To train a simple model on a standalone machine you can run
 ```bash
 python ddp-train.py config.py
+```
+
+To train on RSC, you can use
+```bash
+ ava sync oss-uca1; SCENV=ava rsc_launcher launch \
+  --projects AIRSTORE_AVATAR_RSC_DATA_PIPELINE_CRYPTO \
+  -e 'cd ~/rsc/oss-uca1 && \
+  source /uca/conda-envs/activate-latest && \
+  export GLOG_minloglevel=2 && \
+  export NCCL_ASYNC_ERROR_HANDLING=1 && \
+  export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache && \
+  python3 sbatch.py -n 1 -g 8 -t 1 -w 4 --source-dir /home/$USER/rsc/oss-uca1/ \
+  --checkpoint-root-dir /checkpoint/avatar/$USER/oss_release/ \
+  --batchsize 4 \
+  --learning-rate 1e-4 \
+  --masterport $(shuf -i 2049-65000 -n 1)'
 ```
 
 ## Visualization
@@ -50,7 +66,7 @@ TODO
 
 ### Devex
 * Script to download/update dataset if you already have a copy
-* Make script to decide 
+* Make script to decide
 * Figure out pip/conda install for the repo (maybe not? since it's not intended to be used as a library)
 * We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)
 * Write fast download script
@@ -61,7 +77,7 @@ TODO
 
 ### Assets and asset provenance
 * Should we use grown neck geometry? Results look much better and avoids some of the worst pathologies MVP
-* I'm Using CARE's (Chenglei's?) `load_obj` function, because all the darn off the shelf libraries that can load obj 
+* I'm Using CARE's (Chenglei's?) `load_obj` function, because all the darn off the shelf libraries that can load obj
 files have issues, see if we can switch to something else
 * ~~I ported `make_closest_uv_barys` and its dependencies to this repo hoping I'd be able to re-compute the arguments~~
 ~~of the encoders (`bary_idx` and `bary_img` on the fly, instead of giving people the pre-computed images, since that's~~

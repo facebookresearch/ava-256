@@ -117,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
 
     # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
-    parser.add_argument("--dataset", type=str, default="ava", help="The dataset to use")
+    parser.add_argument("--dataset", type=str, default="mugsy", help="The dataset to use")
     parser.add_argument("--ids2use", type=int, default=-1, help="the number of processes for distributed training")
     parser.add_argument("--idfilepath", type=str, default=None, help="file of id list for training or evaluation")
     parser.add_argument("--tensorboard-logdir", type=str, default=None, help="dir where tensorboard log will output to")
@@ -222,21 +222,23 @@ if __name__ == "__main__":
 
     # Load
     if args.dataset == "mugsy":
-        nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
-        nr_captures = [
-            MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
-            for _, row in nr_captures.iterrows()
-        ]
+        # nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
+        # nr_captures = [
+        #     MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
+        #     for _, row in nr_captures.iterrows()
+        # ]
         r_captures = pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
         r_captures = [
             MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=True)
             for _, row in r_captures.iterrows()
         ]
 
-        captures = nr_captures + r_captures
+        # captures = nr_captures + r_captures
+        captures = r_captures
 
         train_captures = captures[: args.nids]
-        train_captures = np.array_split(train_captures, worldsize)[args.rank]
+        # train_captures = np.array_split(train_captures, worldsize)[args.rank]
+        # train_captures = captures
         dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
     elif args.dataset == "ava":
         # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
@@ -277,7 +279,8 @@ if __name__ == "__main__":
 
     # build autoencoder
     starttime = time.time()
-    ae = profile.get_autoencoder(dataset, assetpath="/home/julietamartinez/src/oss-uca1/assets/rsc-assets/")
+    assetpath = pathlib.Path(__file__).parent / "assets"
+    ae = profile.get_autoencoder(dataset, assetpath=str(assetpath))
     ae = ae.to("cuda").train()
 
     iternum = 0
@@ -288,7 +291,7 @@ if __name__ == "__main__":
         ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=True)
 
     optim_type = "adam"
-    _, optim = gen_optimizer(ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger)
+    _, optim = gen_optimizer(ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, args.worldsize)
 
     logging.info("Autoencoder instantiated ({:.2f} s)".format(time.time() - starttime))
 
@@ -428,7 +431,7 @@ if __name__ == "__main__":
                 writer.batch(
                     iternum,
                     iternum * batchsize + torch.arange(0),
-                    f"{outpath}/progress_{iternum}.jpg",
+                    f"{outpath}/progress_{iternum}.png",
                     **cudadata,
                     **output,
                 )

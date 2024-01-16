@@ -2,6 +2,9 @@ __pycache__
 .pytest_cache
 
 *.jpg
+*.png
+*.out
+*.err
 run/
 assets/rsc-assets
 

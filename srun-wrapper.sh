@@ -78,9 +78,12 @@ done
 echo "@@@@@@@@ SLURM LOCAL ID " ${SLURM_LOCALID}
 echo "@@@@@@@@ VDEVICES " ${VDEVICES}
 
+# NOTE(julieta) if using slurm, override masterip to the first node in the list
+MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+echo "@@@@@@@@ MASTER ADDR " ${MASTER_ADDR}
 
 #CUDA_VISIBLE_DEVICES=${SLURM_LOCALID} python3 ${RSC_RUN_SLURM_SNAPSHOT_DIR}/${RSC_PROGRAM_NAME} ${RUN_CONFIG} $args
-CUDA_VISIBLE_DEVICES=${VDEVICES} python3 ${RSC_RUN_SLURM_SNAPSHOT_DIR}/${RSC_PROGRAM_NAME} ${RUN_CONFIG} $args
+CUDA_VISIBLE_DEVICES=${VDEVICES} python3 ${RSC_RUN_SLURM_SNAPSHOT_DIR}/${RSC_PROGRAM_NAME} ${RUN_CONFIG} $args --masterip ${MASTER_ADDR}
 
 # if [[ ! -z "$31" ]] && [[ "$1" == "--debugprefetch" ]]; then
 #     echo "DEBUG PREFETCH srun_wrapper.sh"

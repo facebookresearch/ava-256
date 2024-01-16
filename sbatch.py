@@ -207,12 +207,6 @@ def get_parser():
         help="only for scan data experiment -- enable png scanning on samples from AIRSTORE",
     )
     parser.add_argument(
-        "--displayloss",
-        action="store_true",
-        default=False,
-        help="whether show loss value every iteration or not",
-    )
-    parser.add_argument(
         "--displayprofstats",
         action="store_true",
         default=False,
@@ -250,12 +244,12 @@ def get_parser():
         help="Learning rate base at batch size of 8. Will be linearly scaled",
     )
 
-    parser.add_argument(
-        "--subsample-size",
-        type=int,
-        default=2048 // 4,
-        help="Size of image after cropping -- or other subsampling method used",
-    )
+    # parser.add_argument(
+    #     "--subsample-size",
+    #     type=int,
+    #     default=2048 // 4,
+    #     help="Size of image after cropping -- or other subsampling method used",
+    # )
 
     parser.add_argument(
         "-d",
@@ -296,7 +290,7 @@ def get_parser():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="MGR",
+        default="mugsy",
         help="dataset to use",
     )
     parser.add_argument(
@@ -321,12 +315,6 @@ def get_parser():
         "--disable_id_encoder",
         action='store_true',
         help="disable id_encoder in ae",
-    )
-    parser.add_argument(
-        "--gradient_accumulation",
-        type=int,
-        default=1,
-        help="steps to accumulate gradients before updating model weights"
     )
     parser.add_argument(
         "--nids",
@@ -408,7 +396,7 @@ def gen_job_config(args):
     config['finetunefile'] = args.finetunefile
     config['idfilepath'] = args.idfilepath
     config['learning_rate'] = args.learning_rate
-    config['subsample_size'] = args.subsample_size
+    # config['subsample_size'] = args.subsample_size
     config['downsample'] = args.downsample
     config['holdoutratio'] = args.holdoutratio
     config['crank'] = args.crank
@@ -706,9 +694,6 @@ def append_args_to_cmdline(
     if ids2use != -1:
         srun_cmd_str += f" --ids2use {ids2use}"
 
-    if args.displayloss:
-        srun_cmd_str += f" --displayloss"
-
     if args.displayprofstats:
         srun_cmd_str += f" --displayprofstats"
 
@@ -718,8 +703,8 @@ def append_args_to_cmdline(
     if args.batchsize:
         srun_cmd_str += f" --batchsize {args.batchsize}"
 
-    if args.subsample_size:
-        srun_cmd_str += f" --subsample-size {args.subsample_size}"
+    # if args.subsample_size:
+    #     srun_cmd_str += f" --subsample-size {args.subsample_size}"
 
     if args.learning_rate:
         srun_cmd_str += f" --learning-rate {args.learning_rate}"
@@ -747,8 +732,6 @@ def append_args_to_cmdline(
 
     if args.cfg is not None:
         srun_cmd_str += f" --cfg {args.cfg}"
-
-    srun_cmd_str += f" --gradient_accumulation {args.gradient_accumulation}"
 
     if args.disable_id_encoder:
         srun_cmd_str += f" --disable_id_encoder"
