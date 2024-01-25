@@ -1,6 +1,0 @@
-einops
-torch
-trimesh
-opencv-python
-rtree
-scipy
