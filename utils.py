@@ -244,8 +244,6 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
     TODO(julieta) document
     """
 
-    import cv2
-
     dotobj = load_obj(objpath)
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
@@ -259,13 +257,13 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
 
     index_img = index_img.numpy()
     bary_img = bary_img.numpy()
-
-    idx0 = cv2.flip(vi[index_img, 0], flipCode=0)
-    idx1 = cv2.flip(vi[index_img, 1], flipCode=0)
-    idx2 = cv2.flip(vi[index_img, 2], flipCode=0)
-    bar0 = cv2.flip(bary_img[0], flipCode=0)
-    bar1 = cv2.flip(bary_img[1], flipCode=0)
-    bar2 = cv2.flip(bary_img[2], flipCode=0)
+    
+    idx0 = np.flipud(vi[index_img, 0])
+    idx1 = np.flipud(vi[index_img, 1])
+    idx2 = np.flipud(vi[index_img, 2])
+    bar0 = np.flipud(bary_img[0])
+    bar1 = np.flipud(bary_img[1])
+    bar2 = np.flipud(bary_img[2])
 
     return {
         "uv_idx": np.concatenate((idx0[None, :, :], idx1[None, :, :], idx2[None, :, :]), axis=0),

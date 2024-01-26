@@ -41,7 +41,7 @@ def get_autoencoder(dataset, assetpath: str):
     allcameras = dataset.get_allcameras()
     ncams = len(allcameras)
 
-    print("@@@ Get autoencoder ABLATION CONFIG FILE : lenth of data set : {}".format(len(dataset.identities)))
+    print("@@@ Get autoencoder ABLATION CONFIG FILE : length of data set : {}".format(len(dataset.identities)))
     print(f"dataset vertmean: {dataset.vertmean.shape}")
 
     vertmean = torch.from_numpy(dataset.vertmean)

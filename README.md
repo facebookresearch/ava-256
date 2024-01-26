@@ -68,7 +68,7 @@ TODO
 * Script to download/update dataset if you already have a copy
 * Make script to decide
 * Figure out pip/conda install for the repo (maybe not? since it's not intended to be used as a library)
-* We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)
+* ~~We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)~~
 * Write fast download script
 * Download script
 * Nice tensorboard, but not too intrusive with the main training loop
