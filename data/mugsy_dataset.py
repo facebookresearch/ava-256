@@ -445,7 +445,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         try:
-            frame = self.frames[idx // len(self.frames)]
+            frame = self.frames[idx // len(self.cameras)]
             camera = self.cameras[idx % len(self.cameras)]
         except IndexError as e:
             print(f"{idx=}, {len(self.frames)=}, {len(self.cameras)=}")
