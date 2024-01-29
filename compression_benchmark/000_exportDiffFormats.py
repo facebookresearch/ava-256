@@ -7,6 +7,9 @@ import time
 import json
 import argparse
 from pathlib import Path
+from collections import defaultdict 
+
+from utils import *
 
 register_heif_opener()
 
@@ -18,11 +21,6 @@ parser.add_argument('-e', '--img_extension', default='jpg', help='extension form
 
 args = parser.parse_args()
 
-total_image_count = 100
-# img_extension = 'AVIF'
-
-qualities = [12, 25, 50, 70, 90, 100]
-
 input_files = glob.glob(args.dir)
 input_files.sort()
 
@@ -30,7 +28,7 @@ for qual in qualities:
     output_dir = Path(f'{args.output}{args.img_extension}_100-{qual}/')    
     output_dir.mkdir(parents=True, exist_ok=True)
 
-encoding_time_dic = {}
+encoding_time_dic = defaultdict(lambda: {})
 
 for qual in qualities:
     output_dir = f'{args.output}{args.img_extension}_100-{qual}/'
@@ -43,9 +41,7 @@ for qual in qualities:
         toc = time.time()
         
         time_spent = toc - tic
-        basename = input_files[cur_count].split(os.sep)[-1]
-        if basename not in encoding_time_dic:
-            encoding_time_dic[basename] = {}
+        basename = input_files[cur_count].split(os.sep)[-1][:-3] + 'png'
         encoding_time_dic[basename][qual] = time_spent
         cur_count += 1
     

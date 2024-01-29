@@ -9,6 +9,7 @@ import os
 import pillow_avif
 from pillow_heif import register_heif_opener
 import json
+from utils import *
 
 register_heif_opener()
 
@@ -19,7 +20,7 @@ parser.add_argument('-e', '--img_extension', default='jpg', help='extension form
 
 args = parser.parse_args()
 
-scales = [12, 25, 50, 70, 90, 100]
+# scales = [12, 25, 50, 70, 90, 100]
 
 images = glob.glob(f'{args.output}{args.img_extension}_100-100/*')
 images.sort()

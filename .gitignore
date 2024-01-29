@@ -1,6 +1,8 @@
 __pycache__
 .pytest_cache
 .ipynb_checkpoints
+`find -type d -name .ipynb_checkpoints`
+`find -type d -name __init__.pyc`
 
 *.jpg
 *.png

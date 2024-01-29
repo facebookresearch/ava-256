@@ -102,6 +102,7 @@ if __name__ == "__main__":
 
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
+    parser.add_argument("--base-dir", default='/home/ekim2/Storage/MetaProject/datasets/multiface_mini_dataset/', help="no shuffle in airstore")
     parser.add_argument("experconfig", type=str, help="experiment config file")
     parser.add_argument("--profile", type=str, default="Train", help="config profile")
     parser.add_argument("--devices", type=int, nargs="+", default=[0], help="devices")
@@ -243,7 +244,7 @@ if __name__ == "__main__":
     elif args.dataset == "ava":
         # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
         train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
-        train_dirs = ["/home/ekim2/Storage/MetaProject/datasets/multiface_mini_dataset/m--20180227--0000--6795937--GHS"]
+        train_dirs = [f"{args.base_dir}m--20180227--0000--6795937--GHS"]
         dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")
