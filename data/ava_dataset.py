@@ -226,7 +226,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, delim_whitespace=True)
 
         # Filter by segments
-        segments_to_keep = ["E057_Cheeks_Puffed", "E061_Lips_Puffed"]
+        segments_to_keep = ["E001_Neutral_Eyes_Open", "E057_Cheeks_Puffed", "E061_Lips_Puffed"]
         self.framelist = self.framelist[self.framelist["seg_id"].isin(segments_to_keep)]
 
         # Normalization stats
@@ -238,7 +238,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
 
         # Neutral conditioning
         # neutral_segment = "EXP_neutral_peak"  # TODO(julieta) choose from a list of potential neutral segments
-        neutral_segment = "E057_Cheeks_Puffed"
+        neutral_segment = "E001_Neutral_Eyes_Open"
         neut_framelist = self.framelist.loc[self.framelist["seg_id"] == neutral_segment].values.tolist()
         # vlist, tlist = [], []
         for neut_seg, neut_frame in neut_framelist:
