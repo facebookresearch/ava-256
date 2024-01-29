@@ -5,25 +5,34 @@ import pillow_avif
 from pillow_heif import register_heif_opener
 import time
 import json
+import argparse
 
 register_heif_opener()
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-d', '--dir', default='selectedIMGFiles/*.png', help='folder with non-lossy png image files')
+parser.add_argument('-o', '--output', default='selectedIMGFiles_compressed/', help='output folder to store compressed files')
+parser.add_argument('-e', '--img_extension', default='jpg', help='extension format of the compressed file (i.e. jpg, avif, heic, webp)')
+
+args = parser.parse_args()
+
 total_count = 100
-img_extension = 'AVIF'
+# img_extension = 'AVIF'
 
-qualities = [0.125, 0.25, 0.5, 0.7, 0.9, 1.0]
+qualities = [12, 25, 50, 70, 90, 100]
 
-input_files = glob.glob('selectedIMGFiles/*.png')
+input_files = glob.glob(args.dir)
 input_files.sort()
 
 for i in range(len(qualities)):
-    output_dir = f'selectedIMGFiles_compressed/{img_extension}_100-{qualities[i]}/'
+    output_dir = f'{args.output}{args.img_extension}_100-{qualities[i]}/'
     os.makedirs(output_dir,exist_ok=True)
 
 time_dic = {}
 
 for i in range(len(qualities)):
-    output_dir = f'selectedIMGFiles_compressed/{img_extension}_100-{qualities[i]}/'
+    output_dir = f'{args.output}{args.img_extension}_100-{qualities[i]}/'
     cur_count = 0
     
     
@@ -31,7 +40,7 @@ for i in range(len(qualities)):
     while cur_count < total_count:
         image = Image.open(input_files[cur_count])
         tic = time.time()
-        image.save(output_dir+input_files[cur_count].split(os.sep)[-1].split('.')[0] + f'.{img_extension}', quality=int(100*qualities[i]))
+        image.save(output_dir+input_files[cur_count].split(os.sep)[-1].split('.')[0] + f'.{args.img_extension}', quality=qualities[i])
         toc = time.time()
         
         time_spent = toc - tic
@@ -42,5 +51,5 @@ for i in range(len(qualities)):
         cur_count += 1
     
     
-with open(f'selectedIMGFiles_compressed/{img_extension}_time-compress.json','w') as f:
+with open(f'{args.output}{args.img_extension}_time-compress.json','w') as f:
     json.dump(time_dic,f)
