@@ -12,3 +12,8 @@ python 000_exportDiffFormats.py -d {image_directory} -o {output_folder} -e {imag
 
 Then with ```001_getSize+PSNR_SSIM.py```, you can calculate the PSNR and the SSIM between the original non-lossy png files with the newly generated image files.
 
+```002_plotGraphsSize+PSNR_SSIM.py``` saves plots for PSNR, SSIM, compression time, and decompression time.
+
+```003_selectFrames.py``` selects 100 frames from the MultiFace dataset.
+
+```004_sortByBPP.py``` sorts by BPP as symlinks.
