@@ -1,18 +1,14 @@
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-
-from scipy.optimize import curve_fit
 import numpy as np
 from PIL import Image
 import json
 import os
 import math
 import sklearn.cluster
-from sklearn.linear_model import LinearRegression
 
 extensions = ['jpg', 'webp', 'AVIF', 'HEIC']
 
-scales = [0.125, 0.25, 0.5, 0.7, 0.9, 1.0]
+qualities = [12, 25, 50, 70, 90, 100]
 
 color_cycle = ['#377eb8', '#ff7f00', '#4daf4a',
                   '#f781bf', '#a65628', '#984ea3',
@@ -22,20 +18,20 @@ img_size = 1334 * 2048
 
 # Plot SSIM
 fig, ax = plt.subplots()
-for i, e in enumerate(extensions):
-    with open(f'selectedIMGFiles_compressed/{e}_ssim.json') as f:
-        data = json.load(f)
+for i, ext in enumerate(extensions):
+    with open(f'selectedIMGFiles_compressed/{ext}_ssim.json') as f:
+        ssims = json.load(f)
     xs = []
     ys = []
-    for file in data:
-        for scale in scales:
+    for file in ssims:
+        for quality in qualities:
             
-            img_path = f'selectedIMGFiles_compressed/{e}_100-{scale}/{file}'
+            img_path = f'selectedIMGFiles_compressed/{ext}_100-{quality}/{file}'
             size = os.path.getsize(img_path) * 8    # Get the size in bits.
             x = size/img_size
             if x >= 1 or x <= 0:
                 continue
-            y = data[file][str(scale)]
+            y = data[file][str(quality)]
             xs += [x]
             ys += [y]
             
@@ -61,17 +57,17 @@ plt.close()
 fig, ax = plt.subplots()
 
 # Plot PSNR
-for i, e in enumerate(extensions):
-    with open(f'selectedIMGFiles_compressed/{e}_psnr.json') as f:
-        data = json.load(f)
+for i, ext in enumerate(extensions):
+    with open(f'selectedIMGFiles_compressed/{ext}_psnr.json') as f:
+        psnrs = json.load(f)
     xs = []
     ys = []
-    for file in data:
-        for scale in scales:
-            img_path = f'selectedIMGFiles_compressed/{e}_100-{scale}/{file}'
+    for file in psnrs:
+        for quality in qualities:
+            img_path = f'selectedIMGFiles_compressed/{ext}_100-{quality}/{file}'
             size = os.path.getsize(img_path) * 8    # Get the size in bits.
             x = size/img_size
-            y = data[file][str(scale)]
+            y = data[file][str(quality)]
             if x >= 1 or x <= 0:
                 continue
             xs += [x]
@@ -98,18 +94,18 @@ plt.close()
 # Plot decompression time
 fig, ax = plt.subplots()
 
-for i, e in enumerate(extensions):
-    with open(f'selectedIMGFiles_compressed/{e}_time-compress.json') as f:
+for i, ext in enumerate(extensions):
+    with open(f'selectedIMGFiles_compressed/{ext}_time-compress.json') as f:
         data = json.load(f)
     xs = []
     ys = []
     for file in data:
-        for scale in scales:
+        for quality in qualities:
             
-            img_path = f'selectedIMGFiles_compressed/{e}_100-{scale}/{file[:-3]}{e}'
+            img_path = f'selectedIMGFiles_compressed/{ext}_100-{quality}/{file[:-3]}{e}'
             size = os.path.getsize(img_path) * 8    # Get the size in bits.
             x = size/img_size
-            y = data[file][str(scale)]
+            y = data[file][str(quality)]
             if x >= 1 or x <= 0:
                 continue
             xs += [x]
@@ -137,18 +133,18 @@ plt.close()
 # Plot decompression time
 fig, ax = plt.subplots()
 
-for i, e in enumerate(extensions):
-    with open(f'selectedIMGFiles_compressed/{e}_time-decompress.json') as f:
+for i, ext in enumerate(extensions):
+    with open(f'selectedIMGFiles_compressed/{ext}_time-decompress.json') as f:
         data = json.load(f)
     xs = []
     ys = []
     for file in data:
-        for scale in scales:
+        for quality in qualities:
             
-            img_path = f'selectedIMGFiles_compressed/{e}_100-{scale}/{file}'
+            img_path = f'selectedIMGFiles_compressed/{ext}_100-{quality}/{file}'
             size = os.path.getsize(img_path) * 8    # Get the size in bits.
             x = size/img_size
-            y = data[file][str(scale)]
+            y = data[file][str(quality)]
             if x >= 1 or x <= 0:
                 continue
             xs += [x]

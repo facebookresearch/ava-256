@@ -4,8 +4,11 @@ This folder consists of code that calculates the SSIM, PSNR, compression time an
 
 ## How to use
 
-```exportDiffFormats.py``` takes non-lossy ```png``` files and compresses images as various image file extensions of different qualities in the ```output_folder```.
+```000_exportDiffFormats.py``` takes non-lossy ```png``` files and compresses images as various image file extensions of different qualities in the ```output_folder```.
 
 ```bash
 python 000_exportDiffFormats.py -d {image_directory} -o {output_folder} -e {image_extension}
 ```
+
+Then with ```001_getSize+PSNR_SSIM.py```, you can calculate the PSNR and the SSIM between the original non-lossy png files with the newly generated image files.
+

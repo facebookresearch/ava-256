@@ -6,6 +6,7 @@ from pillow_heif import register_heif_opener
 import time
 import json
 import argparse
+from pathlib import Path
 
 register_heif_opener()
 
@@ -17,7 +18,7 @@ parser.add_argument('-e', '--img_extension', default='jpg', help='extension form
 
 args = parser.parse_args()
 
-total_count = 100
+total_image_count = 100
 # img_extension = 'AVIF'
 
 qualities = [12, 25, 50, 70, 90, 100]
@@ -25,31 +26,29 @@ qualities = [12, 25, 50, 70, 90, 100]
 input_files = glob.glob(args.dir)
 input_files.sort()
 
-for i in range(len(qualities)):
-    output_dir = f'{args.output}{args.img_extension}_100-{qualities[i]}/'
-    os.makedirs(output_dir,exist_ok=True)
+for qual in qualities:
+    output_dir = Path(f'{args.output}{args.img_extension}_100-{qual}/')    
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-time_dic = {}
+encoding_time_dic = {}
 
-for i in range(len(qualities)):
-    output_dir = f'{args.output}{args.img_extension}_100-{qualities[i]}/'
+for qual in qualities:
+    output_dir = f'{args.output}{args.img_extension}_100-{qual}/'
     cur_count = 0
     
-    
-
-    while cur_count < total_count:
+    while cur_count < total_image_count:
         image = Image.open(input_files[cur_count])
         tic = time.time()
-        image.save(output_dir+input_files[cur_count].split(os.sep)[-1].split('.')[0] + f'.{args.img_extension}', quality=qualities[i])
+        image.save(output_dir+input_files[cur_count].split(os.sep)[-1].split('.')[0] + f'.{args.img_extension}', quality=qual)
         toc = time.time()
         
         time_spent = toc - tic
-        fname = input_files[cur_count].split(os.sep)[-1]
-        if fname not in time_dic:
-            time_dic[fname] = {}
-        time_dic[fname][qualities[i]] = time_spent
+        basename = input_files[cur_count].split(os.sep)[-1]
+        if basename not in encoding_time_dic:
+            encoding_time_dic[basename] = {}
+        encoding_time_dic[basename][qual] = time_spent
         cur_count += 1
     
     
 with open(f'{args.output}{args.img_extension}_time-compress.json','w') as f:
-    json.dump(time_dic,f)
+    json.dump(encoding_time_dic,f)
