@@ -3,7 +3,7 @@ import os
 
 from io import StringIO
 
-import cv2
+from PIL import Image
 
 from care.data.io.typed.mugsy_raw import (
     CamByteTransform,
@@ -175,9 +175,9 @@ def process_tile_png_sample(transform, sample, sample_id=0, log_image=False):
     transform_img = transform(memoryview(sample['frame']))
 
     if log_image:
-        rgb_img = cv2.cvtColor(transform_img, cv2.COLOR_BGR2RGB)
+        rgb_img = Image.fromarray(transform_img, 'RGB')
         logging.info(f"$$_sample_{sample_id}_frame_{frame_id}_camera_{camera}")
-        cv2.imwrite(f"{sample_id}_frame_{frame_id}_camera_{camera}_rgb.png", rgb_img)
+        rgb_img.save(f"{sample_id}_frame_{frame_id}_camera_{camera}_rgb.png")
 
     return transform_img
 
