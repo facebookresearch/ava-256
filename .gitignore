@@ -1,8 +1,7 @@
 __pycache__
 .pytest_cache
 .ipynb_checkpoints
-`find -type d -name .ipynb_checkpoints`
-`find -type d -name __init__.pyc`
+tests/__pycache__
 
 *.jpg
 *.png
@@ -10,6 +9,7 @@ __pycache__
 *.err
 run/
 assets/rsc-assets
+*/**/__pycache__
 
 # Extensions
 extensions-mvp/*/build/**

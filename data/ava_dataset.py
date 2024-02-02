@@ -43,6 +43,12 @@ logger.addHandler(stdout_handler)
 # Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
 os.environ["RSC_AVATAR_METADATA_PATH"] = "/uca/uca2-meta/"
 
+def getitem(idx: int, framelist, cameras):
+    segment_and_frame = framelist.iloc[idx // len(cameras)]
+    segment: str = segment_and_frame.seg_id
+    frame: str = segment_and_frame.frame_id
+    camera = cameras[idx % len(cameras)]
+    return segment, frame, camera
 
 class MultiCaptureDataset(torch.utils.data.Dataset):
     """
@@ -223,7 +229,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
 
         # Load frame list; ie, (segment, frame) pairs
         frame_list_path = self.dir / "frame_list.txt"
-        self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, delim_whitespace=True)
+        self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, sep=r"\s+")
 
         # Filter by segments
         segments_to_keep = ["E001_Neutral_Eyes_Open", "E057_Cheeks_Puffed", "E061_Lips_Puffed"]
@@ -345,11 +351,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         )
 
     def __getitem__(self, idx: int) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
-        segment_and_frame = self.framelist.iloc[idx]
-        segment: str = segment_and_frame.seg_id
-        frame: str = segment_and_frame.frame_id
-        camera = self.cameras[idx % len(self.cameras)]
-        return self.fetch_data_from_disk(segment, frame, camera)
+        return self.fetch_data_from_disk(*getitem(idx, self.framelist, self.cameras))
 
     def __len__(self):
         return len(self.framelist)
