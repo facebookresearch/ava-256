@@ -10,6 +10,7 @@ import pathlib
 import sys
 import time
 from typing import Dict, List, Union
+import einops
 
 import numpy as np
 import pandas as pd
@@ -65,6 +66,7 @@ def gen_optimizer(
             "learningrate": learning_rate,
             "optimizer": optim_type,
         }
+        
         tensorboard_logger.add_hparams(tb_hyperparams, {"hp_metric": 1.0}, run_name=".")
     return params, opt
 
@@ -116,6 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
     parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
     parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
+    parser.add_argument("--log_freq", type=int, default="10", help="tensorboard logging frequency, in training iterations")
 
     # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
     parser.add_argument("--dataset", type=str, default="mugsy", help="The dataset to use")
@@ -422,6 +425,7 @@ if __name__ == "__main__":
         # and an explicit one to check for loss explosion
         iter_total_time = time.time() - iter_start_time
 
+        imgout = None
         # # print progress
         if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
             del output["verts"]
@@ -429,7 +433,7 @@ if __name__ == "__main__":
             # import ipdb; ipdb.set_trace()
             # fmt: on
             if args.rank == 0:
-                writer.batch(
+                imgout = writer.batch(
                     iternum,
                     iternum * batchsize + torch.arange(0),
                     f"{outpath}/progress_{iternum}.png",
@@ -511,6 +515,31 @@ if __name__ == "__main__":
                 )
                 + f" time: {iter_total_time:.3f} s"
             )
+
+
+        # Tensorboard Logging
+        if tensorboard_logger is not None and iternum % args.log_freq == 0:
+            tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
+
+            tb_loss_stats = {}
+            for k, v in losses.items():
+                if v.ndim == 0:
+                    tb_loss_stats[k] = v
+                else:
+                    tb_loss_stats[k] = torch.sum(v)
+
+            for k, v in losses.items():
+                if v.ndim == 0:
+                    tensorboard_logger.add_scalar("loss/" + k, v, iternum)
+                else:
+                    tensorboard_logger.add_scalar("loss/" + k, torch.sum(v), iternum)
+
+            try:
+                tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
+            except:
+                raise ValueError("Tensorboard cannot log images because it is None.")
+
+
 
         # log losses to tensorboard even if we were not asked for profile stats
         # if tensorboard_logger is not None and iternum % 50 == 0:

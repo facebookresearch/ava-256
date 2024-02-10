@@ -257,6 +257,7 @@ class ProgressWriter:
             )
         else:
             Image.fromarray(np.clip(imgout, 0, 255).astype(np.uint8)).save(os.path.join(outpath, imagename))
+        return np.clip(imgout, 0, 255).astype(np.uint8)
 
     def finalize(self):
         pass

@@ -71,7 +71,7 @@ TODO
 * ~~We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)~~
 * Write fast download script
 * Download script
-* Nice tensorboard, but not too intrusive with the main training loop
+* ~~Nice tensorboard, but not too intrusive with the main training loop~~
 * Pytorch lightning for multi-GPU?
 
 

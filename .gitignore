@@ -2,6 +2,7 @@ __pycache__
 .pytest_cache
 .ipynb_checkpoints
 tests/__pycache__
+log/
 
 *.jpg
 *.png
@@ -9,6 +10,7 @@ tests/__pycache__
 *.err
 run/
 assets/rsc-assets
+*log/
 */**/__pycache__
 
 # Extensions
