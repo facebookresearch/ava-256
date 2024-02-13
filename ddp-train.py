@@ -20,6 +20,7 @@ import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
+from data.mini_ava_dataset import MultiCaptureDataset as MiniAvaMultiCaptureDataset
 from data.mugsy_dataset import MugsyCapture
 from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
 from data.mugsy_dataset import none_collate_fn
@@ -104,7 +105,7 @@ if __name__ == "__main__":
 
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
-    parser.add_argument("--base-dir", default='/home/ekim2/Storage/MetaProject/datasets/multiface_mini_dataset/', help="no shuffle in airstore")
+    parser.add_argument("--base-dir", default="/home/ekim2/Storage/MetaProject/datasets/multiface_mini_dataset/", help="base directory for training")
     parser.add_argument("experconfig", type=str, help="experiment config file")
     parser.add_argument("--profile", type=str, default="Train", help="config profile")
     parser.add_argument("--devices", type=int, nargs="+", default=[0], help="devices")
@@ -249,6 +250,10 @@ if __name__ == "__main__":
         train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
         train_dirs = [f"{args.base_dir}/m--20180227--0000--6795937--GHS"]
         dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
+    elif args.dataset == "mini_ava":
+        train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
+        train_dirs = [f"{args.base_dir}/20230405--1635--AAN112"]
+        dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")
 

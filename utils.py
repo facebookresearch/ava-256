@@ -13,6 +13,8 @@ import torch as th
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
 
+import pickle
+
 # from sklearn.neighbors import KDTree  # noqa
 
 
@@ -44,7 +46,7 @@ def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
             'extrin'
     """
     cameras = {}
-
+    
     with open(path, "r") as f:
         while True:
             name = f.readline()
@@ -64,6 +66,21 @@ def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
 
     return cameras
 
+def load_camera_Calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
+    """Load a KRT file containing camera parameters
+    Args:
+        path: File path that contains the KRT information
+    Returns:
+        A dictionary with
+            'intrin'
+            'dist'
+            'extrin'
+    """
+    
+    with open(path, "rb") as f:
+        cameras = pickle.load(f)
+
+    return cameras
 
 def load_obj(path: Union[str, TextIO], return_vn: bool = False) -> ObjectType:
     """Load wavefront OBJ from file. See https://en.wikipedia.org/wiki/Wavefront_.obj_file for file format details

@@ -8,3 +8,5 @@ tensorboard
 tqdm
 pyarrow
 pytest
+pillow
+pillow-avif-plugin
