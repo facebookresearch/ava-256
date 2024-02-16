@@ -6,8 +6,10 @@ log/
 
 *.jpg
 *.png
+*.avif
 *.out
 *.err
+*.zip
 run/
 assets/rsc-assets
 *log/
