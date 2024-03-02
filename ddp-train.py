@@ -450,34 +450,21 @@ if __name__ == "__main__":
         # if not args.noprogress and iternum in evalpoints and args.rank == 0:
         #    writer.batch(iternum, iternum * batchsize + torch.arange(0), **cudadata, **output)
 
-        # save_checkpoints = False
-        # if iternum < 10_000:
-        #     # to account for early loss explosions
-        #     if iternum % 2_000 == 0:
-        #         save_checkpoints = True
-        # else:
-        #     if iternum % 20_000 == 0:
-        #         save_checkpoints = True
+        save_checkpoints = False
+        if iternum < 10_000:
+            # to account for early loss explosions
+            if iternum % 2_000 == 0:
+                save_checkpoints = True
+        else:
+            if iternum % 20_000 == 0:
+                save_checkpoints = True
 
-        # # save intermediate results only if rank 0 does not have loss explosion
-        # if save_checkpoints:
-        #     # in case of ddp loss_explosion is true if any of the ranks have loss explosion
-        #     # in case of non ddp loss_explosion is true if the current rank has a loss explosion
-        #     # only save dataloader state if loss_explosion is false, reason being rank 0 will only
-        #     # save checkpoint if no rank has loss explosion
-        #     if not loss_explosion:
-        #         # if args.rank == 0:
-        #         # NOTE(julieta) all ranks will save their models...
-        #         logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
-        #         torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))  # outpath should be " run_base_dir/0/0"
-        #         # torch.save(optim.state_dict(), "{}/optimparams.pt".format(outpath))
-        #         torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
-        #         # torch.save(optim.state_dict(), "{}/optimparams_{:06d}.pt".format(outpath, iternum))
-        #         # checkpoint_job_config = read_job_config()
-        #         # checkpoint_job_config["num_iterations"] = iternum
-        #         # log_job_config(checkpoint_job_config)
-        #     else:
-        #         logging.warning(f"skipping checkpoint save, rank {args.rank} is seeing unstable loss value(s)")
+        if save_checkpoints:
+            logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
+            torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))
+            torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+        else:
+            logging.warning(f"skipping checkpoint save, rank {args.rank} is seeing unstable loss value(s)")
 
         # if local_explosion:
         # if loss_explosion:

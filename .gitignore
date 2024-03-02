@@ -9,11 +9,12 @@ log/
 *.avif
 *.out
 *.err
+*run*/
 *.zip
-run/
 assets/rsc-assets
 *log/
 */**/__pycache__
+viz/
 
 # Extensions
 extensions-mvp/*/build/**
