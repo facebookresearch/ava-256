@@ -11,6 +11,7 @@ log/
 *.err
 *run*/
 *.zip
+*run*/
 assets/rsc-assets
 *log/
 */**/__pycache__

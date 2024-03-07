@@ -67,7 +67,7 @@ def gen_optimizer(
             "learningrate": learning_rate,
             "optimizer": optim_type,
         }
-        
+
         tensorboard_logger.add_hparams(tb_hyperparams, {"hp_metric": 1.0}, run_name=".")
     return params, opt
 
