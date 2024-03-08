@@ -26,6 +26,7 @@ from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
 from data.mugsy_dataset import MugsyCapture
+from data.utils import getitem
 from utils import load_krt
 
 mp.set_start_method("spawn", force=True)
@@ -42,13 +43,6 @@ logger.addHandler(stdout_handler)
 
 # Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
 os.environ["RSC_AVATAR_METADATA_PATH"] = "/uca/uca2-meta/"
-
-def getitem(idx: int, framelist, cameras):
-    segment_and_frame = framelist.iloc[idx // len(cameras)]
-    segment: str = segment_and_frame.seg_id
-    frame: str = segment_and_frame.frame_id
-    camera = cameras[idx % len(cameras)]
-    return segment, frame, camera
 
 class MultiCaptureDataset(torch.utils.data.Dataset):
     """

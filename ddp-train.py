@@ -11,14 +11,19 @@ import sys
 import time
 from typing import Dict, List, Union
 import einops
+import yaml
+import random
 
 import numpy as np
 import pandas as pd
+from fvcore.common.config import CfgNode as CN
 import torch
 import torch.distributed as dist
 import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter
+import torch.optim.lr_scheduler as lr_scheduler
 
+from progress_writer import Progress
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.mini_ava_dataset import MultiCaptureDataset as MiniAvaMultiCaptureDataset
 from data.mugsy_dataset import MugsyCapture
@@ -26,6 +31,8 @@ from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
 from data.mugsy_dataset import none_collate_fn
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
+from utils import load_checkpoint, get_autoencoder, render_img, train_csv_loader
+from data.utils import get_framelist_neuttex_and_neutvert
 
 sys.dont_write_bytecode = True
 
@@ -99,16 +106,12 @@ def check_quorum(token, allmembers):
         # logging.warning(f"at least one of the ranks is seeing unstable loss value(s)")
     return ResetFlag
 
-
 if __name__ == "__main__":
     __spec__ = None  # to use ipdb
 
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
-    parser.add_argument("--base-dir", default="/home/ekim2/Storage/MetaProject/datasets/multiface_mini_dataset/", help="base directory for training")
-    parser.add_argument("experconfig", type=str, help="experiment config file")
-    parser.add_argument("--profile", type=str, default="Train", help="config profile")
-    parser.add_argument("--devices", type=int, nargs="+", default=[0], help="devices")
+    
     parser.add_argument("--ablationcamera", action="store_true", help="running ablation camera experiments")
     parser.add_argument("--noprogress", action="store_true", help="don't output training progress images")
     parser.add_argument("--nostab", action="store_true", help="don't check loss stability")
@@ -119,23 +122,21 @@ if __name__ == "__main__":
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
     parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
     parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
-    parser.add_argument("--log_freq", type=int, default="10", help="tensorboard logging frequency, in training iterations")
-
+    
     # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
-    parser.add_argument("--dataset", type=str, default="mugsy", help="The dataset to use")
     parser.add_argument("--ids2use", type=int, default=-1, help="the number of processes for distributed training")
     parser.add_argument("--idfilepath", type=str, default=None, help="file of id list for training or evaluation")
-    parser.add_argument("--tensorboard-logdir", type=str, default=None, help="dir where tensorboard log will output to")
-
-    # Training hyperparams.
-    parser.add_argument("--maxiter", type=int, default=10_000_000, help="maximum number of iterations")
-    parser.add_argument("--num_workers", type=int, default=4, help="number of dataloader workers")
-    parser.add_argument("--batchsize", type=int, default=2, help="Batch size per GPU to use")
-    parser.add_argument("--learning-rate", type=float, default=4e-4, help="Learning rate passed as it to the optimizer")
-    parser.add_argument("--clip", type=float, default=1.0, help="Gradient clipping")
-    parser.add_argument("--nids", type=int, default=1, help="Number of identities to select")
-    parser.add_argument("--downsample", type=int, default=6, help="image downsampling factor at data loader")
+    parser.add_argument("--config", default="config.yaml", type=str, help="config yaml file")
+    parser.add_argument("--opts", default=[], type=str, nargs="+")
+    
     args = parser.parse_args()
+    
+    with open(args.config, 'r') as file:
+        config = CN(yaml.load(file, Loader=yaml.UnsafeLoader))
+    
+    config.merge_from_list(args.opts)
+                
+    train_params = config.train
 
     # TODO(julieta) remove all references to SLURM variables
     args.worldsize = int(os.environ.get("SLURM_NTASKS", args.worldsize))
@@ -144,11 +145,12 @@ if __name__ == "__main__":
     current_file = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file)
     outpath = os.environ.get(
-        "RSC_RUN_DIR", os.path.join(current_dir, "run")
+        "RSC_RUN_DIR", os.path.join(current_dir, config.progress.output_path)
     )  # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
-    os.makedirs(outpath, exist_ok=True)
+    os.makedirs(f'{outpath}/x-id', exist_ok=True)
+    # os.makedirs(outpath, exist_ok=True)
 
-    tlogpath = "{}/log-r{}.txt".format(outpath, args.rank)
+    logpath = "{}/log-r{}.txt".format(outpath, args.rank)
 
     # if path exists append automatically
     logging.info(f"Python {sys.version}")
@@ -170,8 +172,8 @@ if __name__ == "__main__":
     cuda_device_count = torch.cuda.device_count()
 
     tensorboard_logger = None
-    if args.tensorboard_logdir is not None and args.rank == 0:
-        tensorboard_logdir = args.tensorboard_logdir
+    if config.progress.tensorboard.logdir is not None and args.rank == 0:
+        tensorboard_logdir = config.progress.output_path + '/' + config.progress.tensorboard.logdir
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
 
@@ -193,7 +195,7 @@ if __name__ == "__main__":
     logging.info(f" DIST URL : {disturl}")
 
     # TODO(julieta) get the number of workers from the command line
-    numworkers = args.num_workers
+    numworkers = train_params.num_workers
 
     enableddp = False
 
@@ -210,23 +212,23 @@ if __name__ == "__main__":
 
         enableddp = True
 
-    # load config
     starttime = time.time()
-    experconfig = import_module(args.experconfig, "config")
-    profile = getattr(experconfig, args.profile)()
     if not args.noprogress:
-        progressprof = experconfig.Progress()
+        progressprof = Progress()
 
-    logging.info("@@@@@@@ CONFIG.PY PATH : {}".format(experconfig))
-    batchsize = args.batchsize
-    learning_rate = args.learning_rate
-    logging.info("Config loaded ({:.2f} s)".format(time.time() - starttime))
+    batchsize = train_params.batchsize
+    learning_rate = train_params.init_learning_rate
 
     # build dataset & testing dataset
     starttime = time.time()
+    
+    base_dir = train_params.base_dir
+    datatype = train_params.dataset
+    train_dirs = None
+    train_captures = None
 
     # Load
-    if args.dataset == "mugsy":
+    if datatype == "mugsy":
         # nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
         # nr_captures = [
         #     MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
@@ -241,25 +243,24 @@ if __name__ == "__main__":
         # captures = nr_captures + r_captures
         captures = r_captures
 
-        train_captures = captures[: args.nids]
+        train_captures = captures[: train_params.nids]
         # train_captures = np.array_split(train_captures, worldsize)[args.rank]
         # train_captures = captures
-        dataset = MugsyMultiCaptureDataset(train_captures, downsample=args.downsample)
-    elif args.dataset == "ava":
+        dataset = MugsyMultiCaptureDataset(train_captures, downsample=train_params.downsample)
+    elif datatype == "ava":
         # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
         train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
-        train_dirs = [f"{args.base_dir}/m--20180227--0000--6795937--GHS"]
-        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
-    elif args.dataset == "mini_ava":
-        train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
-        train_dirs = [f"{args.base_dir}/20230405--1635--AAN112"]
-        dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=args.downsample)
+        train_dirs = [f"{base_dir}/m--20180227--0000--6795937--GHS", f"{base_dir}/m--20180105--0000--002539136--GHS"]
+        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
+    elif datatype == "mini_ava":
+        train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
+        dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
     else:
-        raise ValueError(f"Unsupported dataset: {args.dataset}")
+        raise ValueError(f"Unsupported dataset: {datatype}")
 
     vertmean, vertstd = torch.Tensor(dataset.vertmean).cuda(), dataset.vertstd
 
-    maxiter = args.maxiter  # that ought to be enough for anyone
+    maxiter = train_params.maxiter  # that ought to be enough for anyone
     logging.info(" maxiter :  {}, batchsize: {}".format(maxiter, batchsize))
 
     # dummysampler = AirstoreDummySampler(dataset)
@@ -277,8 +278,33 @@ if __name__ == "__main__":
         # pin_memory=True,
         collate_fn=none_collate_fn,
     )
-
-    logging.info("Dataset instantiated ({:.2f} s)".format(time.time() - starttime))
+            
+    # Store neut avgtex and neut vert from all ids for x-id check
+    all_neut_avgtex_vert = []
+    
+    for directory in train_dirs:
+        _, neut_avgtex, neut_vert = get_framelist_neuttex_and_neutvert(directory)
+        
+        neut_avgtex = (neut_avgtex - dataset.texmean) / dataset.texstd
+        neut_verts = (neut_vert - dataset.vertmean) / dataset.vertstd
+        all_neut_avgtex_vert.append({"neut_avgtex": torch.tensor(neut_avgtex), "neut_verts": torch.tensor(neut_verts)})
+        
+    
+    # Driver data for x-id
+    driver_dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample,cameras_specified=["401031", "401880", "401878"])
+    
+    driver_dataloader = torch.utils.data.DataLoader(
+        driver_dataset,
+        batch_size=1,
+        # sampler=dummysampler,
+        shuffle=True,
+        drop_last=True,
+        num_workers=1,
+        # pin_memory=True,
+        collate_fn=none_collate_fn,
+    )
+            
+    logging.info("Datasets instantiated ({:.2f} s)".format(time.time() - starttime))
 
     # data writer
     starttime = time.time()
@@ -289,7 +315,11 @@ if __name__ == "__main__":
     # build autoencoder
     starttime = time.time()
     assetpath = pathlib.Path(__file__).parent / "assets"
-    ae = profile.get_autoencoder(dataset, assetpath=str(assetpath))
+    ae = get_autoencoder(dataset, assetpath=str(assetpath))
+    
+    # load checkpoint
+    if train_params.checkpoint:
+        ae = load_checkpoint(ae, train_params.checkpoint)
     ae = ae.to("cuda").train()
 
     iternum = 0
@@ -301,12 +331,20 @@ if __name__ == "__main__":
 
     optim_type = "adam"
     _, optim = gen_optimizer(ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, args.worldsize)
+    scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=4/3)
 
+    
     logging.info("Autoencoder instantiated ({:.2f} s)".format(time.time() - starttime))
 
     starttime = time.time()
 
-    loss_weights: Dict[str, float] = profile.get_loss_weights()
+    loss_weights: Dict[str, float] = {
+        "irgbl1": train_params.losses.irgbl1,
+        "vertl1": train_params.losses.vertl1,
+        "kldiv": train_params.losses.kldiv,
+        "primvolsum": train_params.losses.primvolsum
+    }
+    
     logging.info("Optimizer instantiated ({:.2f} s)".format(time.time() - starttime))
 
     # train
@@ -318,10 +356,13 @@ if __name__ == "__main__":
 
     prevtime = time.time()
 
-    output_set = profile.get_output_set()
+    output_set = set(train_params.output_set)
     logging.info("OUTPUT SET :{}".format(output_set))
-
-    for iternum, data in enumerate(dataloader):
+    
+    driver_dataiter = iter(driver_dataloader)
+    
+    iternum = 0
+    for data in dataloader:
         if data is None:
             continue
 
@@ -377,9 +418,6 @@ if __name__ == "__main__":
         if not losses:
             raise ValueError("No losses were computed. We can't train like that!")
 
-        # fmt: off
-        # import ipdb; ipdb.set_trace()
-        # fmt: on
         # compute final loss
         loss = sum(
             [
@@ -423,7 +461,7 @@ if __name__ == "__main__":
                 p.grad.data[torch.isnan(p.grad.data)] = 0
                 p.grad.data[torch.isinf(p.grad.data)] = 0
 
-        torch.nn.utils.clip_grad_norm_(ae.parameters(), args.clip)
+        torch.nn.utils.clip_grad_norm_(ae.parameters(), train_params.clip)
         optim.step()
 
         # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
@@ -431,24 +469,99 @@ if __name__ == "__main__":
         iter_total_time = time.time() - iter_start_time
 
         imgout = None
-        # # print progress
+        # print progress
         if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
+            renderImages = []
             del output["verts"]
-            # fmt: off
-            # import ipdb; ipdb.set_trace()
-            # fmt: on
+            for b in range(cudadata["camrot"].shape[0]):
+                gt = cudadata["image"][b].detach().cpu().numpy()
+                gt = einops.rearrange(gt, "c h w -> h w c")
+                
+                rgb_orig = output["irgbrec"][b].detach().cpu().numpy()
+                rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
+                renderImages.append([gt, rgb_orig, (gt-rgb_orig)**2 * 10])
+                
             if args.rank == 0:
-                imgout = writer.batch(
-                    iternum,
-                    iternum * batchsize + torch.arange(0),
-                    f"{outpath}/progress_{iternum}.png",
-                    **cudadata,
-                    **output,
+                imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
+            
+            # cross id generation
+            if config.progress.cross_id:
+                
+                indices_subjects = random.sample(range(0,len(all_neut_avgtex_vert)), config.progress.cross_id_n_subjects) 
+                indices_subjects.sort()
+                
+                driver = next(driver_dataiter)
+                while driver is None:
+                    driver = next(driver_dataiter)
+                    
+                cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)                
+                
+                gt = cudadriver["image"].detach().cpu().numpy()
+                gt = einops.rearrange(gt, "1 c h w -> h w c")
+                renderImages_xid = []
+                renderImages_xid.append(gt)
+                
+                ae.eval()
+                running_avg_scale = False
+                gt_geo = None
+                residuals_weight = 1.0
+                
+                output_driver = ae(
+                    cudadriver["camrot"],
+                    cudadriver["campos"],
+                    cudadriver["focal"],
+                    cudadriver["princpt"],
+                    cudadriver["modelmatrix"],
+                    cudadriver["avgtex"],
+                    cudadriver["verts"],
+                    cudadriver["neut_avgtex"],  
+                    cudadriver["neut_verts"], 
+                    cudadriver["pixelcoords"],
+                    cudadriver["idindex"],
+                    cudadriver["camindex"],
+                    running_avg_scale=running_avg_scale,
+                    gt_geo=gt_geo,
+                    residuals_weight=residuals_weight,
+                    output_set=output_set,
                 )
 
-        # compute evaluation output
-        # if not args.noprogress and iternum in evalpoints and args.rank == 0:
-        #    writer.batch(iternum, iternum * batchsize + torch.arange(0), **cudadata, **output)
+                rgb_driver = output_driver["irgbrec"].detach().cpu().numpy()
+                rgb_driver = einops.rearrange(rgb_driver, "1 c h w -> h w c")
+                del output_driver
+                renderImages_xid.append(rgb_driver)
+                
+                for i in indices_subjects:
+                    if i == int(cudadriver["idindex"][0]):
+                        continue
+                    cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i]) 
+                    
+                    output_driven = ae(
+                        cudadriver["camrot"],
+                        cudadriver["campos"],
+                        cudadriver["focal"],
+                        cudadriver["princpt"],
+                        cudadriver["modelmatrix"],
+                        cudadriver["avgtex"],
+                        cudadriver["verts"],
+                        torch.unsqueeze(cudadriven["neut_avgtex"],0),  
+                        torch.unsqueeze(cudadriven["neut_verts"],0), 
+                        cudadriver["pixelcoords"],
+                        cudadriver["idindex"],
+                        cudadriver["camindex"],
+                        running_avg_scale=running_avg_scale,
+                        gt_geo=gt_geo,
+                        residuals_weight=residuals_weight,
+                        output_set=output_set,
+                    )
+                    rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
+                    rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
+                    del output_driven
+                    renderImages_xid.append(rgb_driven)
+                    del cudadriven
+                ae.train()
+            del cudadriver
+            if args.rank == 0:
+                imgout = render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
 
         save_checkpoints = False
         if iternum < 10_000:
@@ -465,27 +578,6 @@ if __name__ == "__main__":
             torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
         else:
             logging.warning(f"skipping checkpoint save, rank {args.rank} is seeing unstable loss value(s)")
-
-        # if local_explosion:
-        # if loss_explosion:
-        #     if enableddp:
-        #         # to avoid any race conditions when multiple ranks are facing loss explosions
-        #         # we do not want to load aeparams.pt while rank 0 is still writing the file
-        #         dist.barrier()
-
-        #     base_dir = outpath
-        #     if not base_dir:
-        #         raise AssertionError("cannot reset without providing base_dir, check env var RSC_EXP_RUN_BASE_DIR")
-        #     logging.warning(
-        #         f"unstable loss function; resetting -- resume from the latest checkpoint : {outpath}/aeparams.pt"
-        #     )
-        #     # reloading should called after backward is invoked to clean up CUDA memory of the failed iteration
-        #     ae.load_state_dict(torch.load(f"{outpath}/aeparams.pt"), strict=False)
-        #     _, optim = gen_optimizer(
-        #         ae, optim_type, batchsize, args.rank, learning_rate, tensorboard_logger, encoder_lr=args.encoder_lr
-        #     )
-        # # else:
-        # prevloss = loss.item()
 
         del cudadata
 
@@ -510,7 +602,7 @@ if __name__ == "__main__":
 
 
         # Tensorboard Logging
-        if tensorboard_logger is not None and iternum % args.log_freq == 0:
+        if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
             tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
 
             tb_loss_stats = {}
@@ -526,77 +618,11 @@ if __name__ == "__main__":
                 else:
                     tensorboard_logger.add_scalar("loss/" + k, torch.sum(v), iternum)
 
-            try:
-                tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
-            except:
-                raise ValueError("Tensorboard cannot log images because it is None.")
+            # try:
+            #     tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
+            # except:
+            #     raise ValueError("Tensorboard cannot log images because it is None.")
 
-
-
-        # log losses to tensorboard even if we were not asked for profile stats
-        # if tensorboard_logger is not None and iternum % 50 == 0:
-        #     tb_loss_stats = {
-        #         "rank": args.rank,
-        #         "loss": float(loss.item()),
-        #     }
-        #     for k, v in losses.items():
-        #         if isinstance(v, tuple):
-        #             tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
-        #         else:
-        #             tb_loss_stats[k] = torch.mean(v)
-
-        #     for k, v in tb_loss_stats.items():
-        #         tensorboard_logger.add_scalar("loss/" + k, v, iternum)
-
-        #     if enableddp and args.worldsize > 1:
-        #         averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
-        #         for k, v in averaged_losses.items():
-        #             dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
-        #             averaged_losses[k] = v
-
-        #         if rank == 0:
-        #             for k, v in averaged_losses.items():
-        #                 tensorboard_logger.add_scalar(f"averaged_{k}/", v.item())
-
-        # if args.worldsize > 1 and iternum % 50 == 0:
-        #     tb_loss_stats = {
-        #         "rank": args.rank,
-        #         "loss": float(loss.item()),
-        #     }
-        #     for k, v in losses.items():
-        #         if isinstance(v, tuple):
-        #             tb_loss_stats[k] = float(torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6)))
-        #         else:
-        #             tb_loss_stats[k] = torch.mean(v)
-
-        #     averaged_losses = {k: torch.Tensor([v]).cuda() for k, v in tb_loss_stats.items()}
-        #     for k, v in averaged_losses.items():
-        #         dist.all_reduce(v, op=dist.ReduceOp.AVG, group=allmembers)
-        #         averaged_losses[k] = v
-
-        #     if rank == 0:
-        #         for k, v in averaged_losses.items():
-        #             logging.info(f"Iteration {iternum}, averaged {k}: {v.item():.3f}")
-
-        # if iternum and iternum % 2000 == 0:
-        #     logging.info(
-        #         "Rank {} Iteration {} loss = {:.5f}, ".format(args.rank, iternum, float(loss.item()))
-        #         + ", ".join(
-        #             [
-        #                 "{} = {:.5f}".format(
-        #                     k,
-        #                     float(
-        #                         torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
-        #                         if isinstance(v, tuple)
-        #                         else torch.mean(v)
-        #                     ),
-        #                 )
-        #                 for k, v in losses.items()
-        #             ]
-        #         )
-        #     )
-
-        # iternum += 1
 
         if iternum >= maxiter:
             logging.info(
@@ -625,6 +651,11 @@ if __name__ == "__main__":
             )
 
             break
+        
+        if iternum < train_params.lr_scheduler_iter+1:
+            scheduler.step()
+        
+        iternum += 1
 
     # cleanup
     writer.finalize()

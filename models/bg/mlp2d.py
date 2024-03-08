@@ -53,7 +53,6 @@ class BackgroundModelSimple(nn.Module):
 
         camenc = self.cammod(self.cam_ident[camindex]).view(b, -1, 1, 1).repeat(1, 1, h, w)
         idenc = self.idmod(self.id_ident[idindex]).view(b, -1, 1, 1).repeat(1, 1, h, w)
-
         posenc = torch.cat(
             [torch.sin(2**i * np.pi * samplecoords) for i in range(10)]
             + [torch.cos(2**i * np.pi * samplecoords) for i in range(10)],

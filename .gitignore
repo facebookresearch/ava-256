@@ -3,6 +3,7 @@ __pycache__
 .ipynb_checkpoints
 tests/__pycache__
 log/
+extras/
 
 *.jpg
 *.png
@@ -11,8 +12,9 @@ log/
 *.err
 *run*/
 *.zip
-*run*/
+*.mp4
 assets/rsc-assets
+viz/
 *log/
 */**/__pycache__
 viz/

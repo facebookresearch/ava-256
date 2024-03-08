@@ -49,7 +49,10 @@ To train on RSC, you can use
 ```
 
 ## Visualization
-TODO
+To run visualization, you can run
+```
+python render.py
+```
 
 ## Metrics
 TODO
@@ -71,7 +74,7 @@ TODO
 * ~~We have both cv2 and PIL as dependencies. We should remove one of them (probably cv2, since I don't think we are using it for anything non-trivial)~~
 * Write fast download script
 * Download script
-* ~~Nice tensorboard, but not too intrusive with the main training loop~~
+* Nice tensorboard, but not too intrusive with the main training loop
 * Pytorch lightning for multi-GPU?
 
 
@@ -97,7 +100,7 @@ files have issues, see if we can switch to something else
 
 ### Models
 
-* `mlp2d.py` ~~clean up~~, add tests
+* `mlp2d.py` ~~clean up~~, ~~add tests~~
 * `models/colorcals` ~~clean up~~, add tests
 
 ### Organization and design
@@ -110,3 +113,9 @@ files have issues, see if we can switch to something else
 
 * What does the structure for data look like?
    * Needs to be something that allows people to download subset of the data efficiently (eg, just meshes)
+
+
+## Dataset Issues
+
+* Some subjects put their hair down, and this changes their appearance drastically. (20230831—-0814—-ADL311) Possible solution: Separate them as different IDs
+* Some subjects have hands appear during capture (ie., 20230831—-0814—-ADL311 pulls hair down)

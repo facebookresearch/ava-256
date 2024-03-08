@@ -8,5 +8,8 @@ tensorboard
 tqdm
 pyarrow
 pytest
+libigl
 pillow
 pillow-avif-plugin
+pyyaml
+yacs

@@ -3,37 +3,128 @@ from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
 
 import einops
 import numpy as np
+import pandas as pd
+from PIL import Image
 
 # import open3d as o3d
 import torch
 import torch as th
+import pickle
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
+from data.mugsy_dataset import MugsyCapture
 
 import pickle
 
 # from sklearn.neighbors import KDTree  # noqa
 
 
-try:
-    from igl import point_mesh_squared_distance
+from igl import point_mesh_squared_distance
 
-    def closest_point(mesh, points):
-        """Helper function that mimics trimesh.proximity.closest_point but uses IGL for faster queries."""
-        v = mesh.vertices
-        vi = mesh.faces
-        dist, face_idxs, p = point_mesh_squared_distance(points, v, vi)
-        return p, dist, face_idxs
-
-except ImportError:
-    from trimesh.proximity import closest_point
+def closest_point(mesh, points):
+    """Helper function that mimics trimesh.proximity.closest_point but uses IGL for faster queries."""
+    v = mesh.vertices
+    vi = mesh.faces
+    dist, face_idxs, p = point_mesh_squared_distance(points, v, vi)
+    return p, dist, face_idxs
 
 
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
+def tocuda(d: Union[torch.Tensor, np.ndarray, Dict, List]) -> Union[torch.Tensor, Dict, List]:
+    if isinstance(d, torch.Tensor):
+        return d.to("cuda")
+    elif isinstance(d, dict):
+        return {k: tocuda(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [tocuda(v) for v in d]
+    else:
+        return d
+    
+def get_renderoptions():
+    return dict(dt=1.0)
+    
+def get_autoencoder(dataset, assetpath: str):
+    import torch
+
+    import models.autoencoder as aemodel
+    import models.bg.mlp2d as bglib
+    import models.bottlenecks.vae as vae
+    import models.colorcals.colorcal as colorcalib
+    import models.decoders.assembler as decoderlib
+    import models.encoders.expression as expression_encoder_lib
+    import models.encoders.identity as identity_encoder_lib
+    import models.raymarchers.mvpraymarcher as raymarcherlib
+
+    allcameras = dataset.get_allcameras()
+    ncams = len(allcameras)
+
+    print("@@@ Get autoencoder ABLATION CONFIG FILE : length of data set : {}".format(len(dataset.identities)))
+    print(f"dataset vertmean: {dataset.vertmean.shape}")
+
+    vertmean = torch.from_numpy(dataset.vertmean)
+    vertstd = dataset.vertstd
+
+    # load per-textel triangulation indices
+    objpath = f"{assetpath}/face_topology.obj"
+    resolution = 1024
+    uvdata = create_uv_baridx(objpath, resolution)
+    vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
+
+    # Encoders
+    expression_encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
+    id_encoder = identity_encoder_lib.IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
+
+    # VAE bottleneck for the expression encoder
+    bottleneck = vae.VAE_bottleneck(64, 16)
+
+    # Decoder
+    volradius = 256.0
+    decoder = decoderlib.DecoderAssembler(
+        vt=np.array(vt, dtype=np.float32),
+        vi=np.array(vi, dtype=np.int32),
+        vti=np.array(vti, dtype=np.int32),
+        idxim=uvdata["uv_idx"],
+        barim=uvdata["uv_bary"],
+        vertmean=vertmean,
+        vertstd=vertstd,
+        volradius=volradius,
+        nprims=128 * 128,
+        primsize=(8, 8, 8),
+    )
+
+    # NOTE(julieta) this ray marcher expects the channels of the template to be last by default
+    raymarcher = raymarcherlib.Raymarcher(volradius)
+    colorcal = colorcalib.Colorcal(len(dataset.get_allcameras()), len(dataset.identities))
+    bgmodel = bglib.BackgroundModelSimple(ncams, len(dataset.identities))
+
+    ae = aemodel.Autoencoder(
+        identity_encoder=id_encoder,
+        expression_encoder=expression_encoder,
+        bottleneck=bottleneck,
+        decoder_assembler=decoder,
+        raymarcher=raymarcher,
+        colorcal=colorcal,
+        bgmodel=bgmodel,
+    )
+
+    # DO NOT RUN VGG AT ALL and remove vgg in loss_weight for ABLATION TEST : @@@@
+    print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
+    print(f"encoder params: {sum(p.numel() for p in ae.expr_encoder.parameters() if p.requires_grad):_}")
+    print(f"decoder params: {sum(p.numel() for p in ae.decoder_assembler.parameters() if p.requires_grad):_}")
+    print(f"colorcal params: {sum(p.numel() for p in ae.colorcal.parameters() if p.requires_grad):_}")
+    print(f"bgmodel params: {sum(p.numel() for p in ae.bgmodel.parameters() if p.requires_grad):_}")
+    print(f"total params: {sum(p.numel() for p in ae.parameters() if p.requires_grad):_}")
+
+    return ae
+
+def load_checkpoint(ae, filename):
+    checkpoint = torch.load(filename)
+    ae.load_state_dict(checkpoint, strict=True)
+    return ae
 
 def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
     """Load a KRT file containing camera parameters
@@ -79,7 +170,7 @@ def load_camera_Calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.nd
     
     with open(path, "rb") as f:
         cameras = pickle.load(f)
-
+    
     return cameras
 
 def load_obj(path: Union[str, TextIO], return_vn: bool = False) -> ObjectType:
@@ -289,3 +380,56 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
         "uv_tri": vti,
         "tri": vi,
     }
+
+def render_img(listsofimages, outpath):
+    """ saves image given a list of list of images
+
+    Args:
+        listsofimages (List[List[np.array]]): list of list of images
+        outpath (str): path to save the image
+
+    Returns:
+        PIL.Image: image
+    """
+    
+    combined_imgs = []
+    for images in listsofimages:
+        rgb = np.hstack(images)
+        combined_imgs.append(rgb)
+    
+    rgb = np.vstack(combined_imgs)
+        
+    rgb = np.clip(rgb, 0, 255).astype(np.uint8)
+    
+    rgb_img = Image.fromarray(rgb)
+
+    rgb_img.save(outpath)
+    
+    return rgb_img
+
+def train_csv_loader(base_dir, csv_path, nids):
+    """ loads train data by id given the csv file of ids
+    Args:
+        base_dir (str): base directory for the dataset
+        csv_path (str): id csv file path
+        nids (int): number of ids to select from
+
+    Returns:
+        List[MugsyCapture]: train_captures: list of mugsy captures
+        List[str]: train_dirs: list of directories for all captures
+    """
+    df = pd.read_csv(csv_path)
+    
+    train_captures = []
+    train_dirs = []
+        
+    for i in range(nids):
+        mcd = df.mcd[i]
+        mct = df.mct[i]
+        sid = df.sid[i]
+        capture = MugsyCapture(mcd=str(mcd), mct=str(mct), sid=sid)
+        dir = f"{base_dir}/{mcd:06d}--{mct:04d}--{sid}/decoder"
+        train_captures.append(capture)
+        train_dirs.append(dir)
+        
+    return train_captures, train_dirs

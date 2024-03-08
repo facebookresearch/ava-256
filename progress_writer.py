@@ -9,7 +9,6 @@
 # status : kl , vgg weight are set to zero
 #
 
-
 # for change resolution : pass imagesize argument, reset downsample factor, and set subsample size (HEIGHT)
 #   in training mode: downsample factor: 2 more --> 1K H by 667 W --> subsample height : 384
 
@@ -18,103 +17,6 @@ from typing import Dict, Set
 
 import numpy as np
 import torch
-
-from utils import create_uv_baridx
-
-
-def get_renderoptions():
-    return dict(dt=1.0)
-
-
-def get_autoencoder(dataset, assetpath: str):
-    import torch
-
-    import models.autoencoder as aemodel
-    import models.bg.mlp2d as bglib
-    import models.bottlenecks.vae as vae
-    import models.colorcals.colorcal as colorcalib
-    import models.decoders.assembler as decoderlib
-    import models.encoders.expression as expression_encoder_lib
-    import models.encoders.identity as identity_encoder_lib
-    import models.raymarchers.mvpraymarcher as raymarcherlib
-
-    allcameras = dataset.get_allcameras()
-    ncams = len(allcameras)
-
-    print("@@@ Get autoencoder ABLATION CONFIG FILE : length of data set : {}".format(len(dataset.identities)))
-    print(f"dataset vertmean: {dataset.vertmean.shape}")
-
-    vertmean = torch.from_numpy(dataset.vertmean)
-    vertstd = dataset.vertstd
-
-    # load per-textel triangulation indices
-    objpath = f"{assetpath}/face_topology.obj"
-    resolution = 1024
-    uvdata = create_uv_baridx(objpath, resolution)
-    vt, vi, vti = uvdata["uv_coord"], uvdata["tri"], uvdata["uv_tri"]
-
-    # Encoders
-    expression_encoder = expression_encoder_lib.ExpressionEncoder(uvdata["uv_idx"], uvdata["uv_bary"])
-    id_encoder = identity_encoder_lib.IdentityEncoder(uvdata["uv_idx"], uvdata["uv_bary"], wsize=128)
-
-    # VAE bottleneck for the expression encoder
-    bottleneck = vae.VAE_bottleneck(64, 16)
-
-    # Decoder
-    volradius = 256.0
-    decoder = decoderlib.DecoderAssembler(
-        vt=np.array(vt, dtype=np.float32),
-        vi=np.array(vi, dtype=np.int32),
-        vti=np.array(vti, dtype=np.int32),
-        idxim=uvdata["uv_idx"],
-        barim=uvdata["uv_bary"],
-        vertmean=vertmean,
-        vertstd=vertstd,
-        volradius=volradius,
-        nprims=128 * 128,
-        primsize=(8, 8, 8),
-    )
-
-    # NOTE(julieta) this ray marcher expects the channels of the template to be last by default
-    raymarcher = raymarcherlib.Raymarcher(volradius)
-    colorcal = colorcalib.Colorcal(len(dataset.get_allcameras()), len(dataset.identities))
-    bgmodel = bglib.BackgroundModelSimple(ncams, len(dataset.identities))
-
-    ae = aemodel.Autoencoder(
-        identity_encoder=id_encoder,
-        expression_encoder=expression_encoder,
-        bottleneck=bottleneck,
-        decoder_assembler=decoder,
-        raymarcher=raymarcher,
-        colorcal=colorcal,
-        bgmodel=bgmodel,
-    )
-
-    # DO NOT RUN VGG AT ALL and remove vgg in loss_weight for ABLATION TEST : @@@@
-    print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
-    print(f"encoder params: {sum(p.numel() for p in ae.expr_encoder.parameters() if p.requires_grad):_}")
-    print(f"decoder params: {sum(p.numel() for p in ae.decoder_assembler.parameters() if p.requires_grad):_}")
-    print(f"colorcal params: {sum(p.numel() for p in ae.colorcal.parameters() if p.requires_grad):_}")
-    print(f"bgmodel params: {sum(p.numel() for p in ae.bgmodel.parameters() if p.requires_grad):_}")
-    print(f"total params: {sum(p.numel() for p in ae.parameters() if p.requires_grad):_}")
-
-    return ae
-
-
-# profiles
-class Train:
-    def get_autoencoder(self, dataset, assetpath: str = "/checkpoint/avatar/jinkyuk/rsc-assets"):
-        return get_autoencoder(dataset, assetpath)
-
-    def get_output_set(self) -> Set[str]:
-        return set(["irgbrec", "sampledimg", "primscale"])
-
-    def get_ae_args(self):
-        return dict(renderoptions=get_renderoptions())
-
-    def get_loss_weights(self) -> Dict[str, float]:
-        return {"irgbl1": 1.0, "vertl1": 0.1, "kldiv": 0.001, "primvolsum": 0.01}
-
 
 class ProgressWriterNoBG:
     def batch(self, iternum, itemnum, imagename=None, **kwargs):
@@ -329,8 +231,8 @@ class Render:
     def get_identities(self):
         return self.input_ididx, self.output_ididx, self.test_output_ididx
 
-    def get_autoencoder(self, dataset):
-        return get_autoencoder(dataset)
+    def get_autoencoder(self, dataset, assetpath):
+        return get_autoencoder(dataset, assetpath)
 
     def get_outputlist(self):
         return ["irgbrec"]
