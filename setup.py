@@ -109,45 +109,28 @@ def _get_cuda_info():
             cxx_args.extend(["-DHAVE_ARCH80=1", "-DHAVE_ARCH86=1"])
             compute_caps.extend(["80", "86"])
     else:
-        pit_clusters = {"pit101", "pit103"}
         hostname = socket.gethostname().lower()
-        is_pit_cluster = any(cname in hostname for cname in pit_clusters)
+        print(f"Host: {hostname}")
 
-        is_rsc_cluster = "rsc" in hostname
+        username = os.getenv("USER")
+        homedir = os.environ.get("HOME", os.path.join("/home", username))
+        nvcc_ccbin = "-ccbin={homedir}/cuda_compilers".format(homedir=homedir)
 
-        if is_pit_cluster or is_rsc_cluster:
-            print("Pittsburgh DGX cluster detected.")
-            nvcc_args.extend(
-                [
-                    "-gencode=arch=compute_60,code=compute_60",
-                    "-gencode=arch=compute_60,code=sm_60",
-                    "-gencode=arch=compute_61,code=sm_61",
-                    "-gencode=arch=compute_70,code=sm_70",
-                ]
-            )
-            cxx_args.extend(["-DHAVE_ARCH60=1", "-DHAVE_ARCH61=1", "-DHAVE_ARCH70=1"])
-            compute_caps = ["60", "61", "70"]
-        else:
-            print(f"Unknown host: {hostname}")
-            username = os.getenv("USER")
-            homedir = os.environ.get("HOME", os.path.join("/home", username))
-            nvcc_ccbin = "-ccbin={homedir}/cuda_compilers".format(homedir=homedir)
-
-            nvcc_args.extend(
-                [
-                    "-gencode=arch=compute_60,code=compute_60",
-                    "-gencode=arch=compute_60,code=sm_60",
-                    "-gencode=arch=compute_61,code=sm_61",
-                    "-gencode=arch=compute_70,code=sm_70",
-                    "-gencode=arch=compute_75,code=sm_75",
-                ]
-            )
-            cxx_args.append("-DHAVE_ARCH60=1")
-            cxx_args.append("-DHAVE_ARCH61=1")
-            cxx_args.append("-DHAVE_ARCH70=1")
-            cxx_args.append("-DHAVE_ARCH75=1")
-            compute_caps = ["60", "61", "70", "75"]
-            cxx_args.append("-I/usr/include/cuda")
+        nvcc_args.extend(
+            [
+                "-gencode=arch=compute_60,code=compute_60",
+                "-gencode=arch=compute_60,code=sm_60",
+                "-gencode=arch=compute_61,code=sm_61",
+                "-gencode=arch=compute_70,code=sm_70",
+                "-gencode=arch=compute_75,code=sm_75",
+            ]
+        )
+        cxx_args.append("-DHAVE_ARCH60=1")
+        cxx_args.append("-DHAVE_ARCH61=1")
+        cxx_args.append("-DHAVE_ARCH70=1")
+        cxx_args.append("-DHAVE_ARCH75=1")
+        compute_caps = ["60", "61", "70", "75"]
+        cxx_args.append("-I/usr/include/cuda")
 
     if "CC" in os.environ and nvcc_ccbin is None:
         nvcc_ccbin = "-ccbin={ccdir}".format(ccdir=os.path.dirname(os.environ.get("CC")))

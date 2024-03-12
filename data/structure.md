@@ -1,5 +1,7 @@
 
 
+<!-- TODO(julieta) Update with latest structure before release -->
+
 ## Proposed data and asset structure for ava-256
 
 Top level folder
