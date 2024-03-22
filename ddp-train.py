@@ -25,14 +25,11 @@ import torch.optim.lr_scheduler as lr_scheduler
 
 from progress_writer import Progress
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
-from data.mini_ava_dataset import MultiCaptureDataset as MiniAvaMultiCaptureDataset
-from data.mugsy_dataset import MugsyCapture
-from data.mugsy_dataset import MultiCaptureDataset as MugsyMultiCaptureDataset
-from data.mugsy_dataset import none_collate_fn
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
 from utils import load_checkpoint, get_autoencoder, render_img, train_csv_loader
 from data.utils import get_framelist_neuttex_and_neutvert
+from data.utils import MugsyCapture
 
 sys.dont_write_bytecode = True
 
@@ -228,33 +225,9 @@ if __name__ == "__main__":
     train_captures = None
 
     # Load
-    if datatype == "mugsy":
-        # nr_captures = pd.read_csv(pathlib.Path(__file__).parent / "215_ids.csv", dtype=str)
-        # nr_captures = [
-        #     MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=False)
-        #     for _, row in nr_captures.iterrows()
-        # ]
-        r_captures = pd.read_csv(pathlib.Path(__file__).parent / "345_ids.csv", dtype=str)
-        r_captures = [
-            MugsyCapture(mcd=row["mcd"], mct=row["mct"], sid=row["sid"], is_relightable=True)
-            for _, row in r_captures.iterrows()
-        ]
-
-        # captures = nr_captures + r_captures
-        captures = r_captures
-
-        train_captures = captures[: train_params.nids]
-        # train_captures = np.array_split(train_captures, worldsize)[args.rank]
-        # train_captures = captures
-        dataset = MugsyMultiCaptureDataset(train_captures, downsample=train_params.downsample)
-    elif datatype == "ava":
-        # TODO(julieta) do capture objects make sense here? we don't really use them now that we have dirs
-        train_captures = [MugsyCapture(mcd="1", mct="1", sid="1")]
-        train_dirs = [f"{base_dir}/m--20180227--0000--6795937--GHS", f"{base_dir}/m--20180105--0000--002539136--GHS"]
-        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
-    elif datatype == "mini_ava":
+    if datatype == "ava":
         train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
-        dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
+        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
     else:
         raise ValueError(f"Unsupported dataset: {datatype}")
 
@@ -275,8 +248,6 @@ if __name__ == "__main__":
         shuffle=False,
         drop_last=True,
         num_workers=numworkers,
-        # pin_memory=True,
-        collate_fn=none_collate_fn,
     )
             
     # Store neut avgtex and neut vert from all ids for x-id check
@@ -291,17 +262,14 @@ if __name__ == "__main__":
         
     
     # Driver data for x-id
-    driver_dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample,cameras_specified=["401031", "401880", "401878"])
+    driver_dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample,cameras_specified=["401031", "401880", "401878"])
     
     driver_dataloader = torch.utils.data.DataLoader(
         driver_dataset,
         batch_size=1,
-        # sampler=dummysampler,
         shuffle=True,
         drop_last=True,
         num_workers=1,
-        # pin_memory=True,
-        collate_fn=none_collate_fn,
     )
             
     logging.info("Datasets instantiated ({:.2f} s)".format(time.time() - starttime))

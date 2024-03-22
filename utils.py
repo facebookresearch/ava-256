@@ -15,7 +15,7 @@ import pickle
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
-from data.mugsy_dataset import MugsyCapture
+from data.utils import MugsyCapture
 
 import pickle
 

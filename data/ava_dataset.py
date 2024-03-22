@@ -1,16 +1,10 @@
-"""
-Dataset of decompressed avatar images from a filesystem.
-
-TODO(julieta) make sure this works on windows
-TODO(julieta) make sure this works on any POSIX
-"""
-
 import bisect
 import logging
 import logging.handlers
 import math
 import os
 import sys
+import pillow_avif
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,9 +19,9 @@ from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
-from data.mugsy_dataset import MugsyCapture
-from data.utils import getitem
-from utils import load_krt
+from utils import load_camera_Calibration
+from data.utils import get_framelist_neuttex_and_neutvert, getitem
+from data.utils import MugsyCapture
 
 mp.set_start_method("spawn", force=True)
 
@@ -39,10 +33,6 @@ stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.DEBUG)
 stdout_handler.setFormatter(formatter)
 logger.addHandler(stdout_handler)
-
-
-# Folder has `/uca2`` for uca2 assets and `/minisis` for minisis assets
-os.environ["RSC_AVATAR_METADATA_PATH"] = "/uca/uca2-meta/"
 
 class MultiCaptureDataset(torch.utils.data.Dataset):
     """
@@ -58,6 +48,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         captures: List[MugsyCapture],
         directories: List[str],
         downsample: int = 4,
+        cameras_specified: List[str] = None
     ):
         super().__init__()
 
@@ -72,8 +63,8 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         # Create many single-capture datasets
         self.single_capture_datasets = OrderedDict()
         for capture, dir in tqdm(zip(captures, directories), desc="Loading single id captures"):
-            self.single_capture_datasets[capture] = SingleCaptureDataset(capture, dir, downsample)
-
+            self.single_capture_datasets[capture] = SingleCaptureDataset(capture, dir, downsample, cameras_specified)
+            
         # Dataset lengths
         self.cumulative_sizes = np.cumsum([len(x) for x in self.single_capture_datasets.values()])
         self.total_len = self.cumulative_sizes[-1]
@@ -154,7 +145,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
             sample_idx = idx
         else:
             sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
-
+        
         capture = self.captures[dataset_idx]
         sample = self.single_capture_datasets[capture][sample_idx]
 
@@ -189,6 +180,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         capture: MugsyCapture,
         directory: str,
         downsample: int = 4,
+        cameras_specified: List[str] = None
     ):
         super().__init__()
 
@@ -205,67 +197,40 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         assert os.path.exists(self.dir), f"Dataset directory {self.dir} does not seem to exist"
 
         # Load krt dictionaries
-        krt_file = self.dir / "KRT"
-        krt_dicts = load_krt(krt_file)
+        krt_file = self.dir / "camera_calibration.pkl"
+        krt_dicts = load_camera_Calibration(krt_file)
         self.cameras = list(krt_dicts.keys())
+        if cameras_specified is not None: 
+            self.cameras = cameras_specified
+        # for i, cam in enumerate(self.cameras):
+        #     cam_dir = self.dir / "images" / f"cam{int(cam):06d}"
+        #     if not cam_dir.exists():
+        #         self.cameras.pop(i)
 
         # Pre-load krts in user-friendly dictionaries
         self.campos, self.camrot, self.focal, self.princpt = {}, {}, {}, {}
         for cam, krt in krt_dicts.items():
             self.campos[cam] = (-np.dot(krt["extrin"][:3, :3].T, krt["extrin"][:3, 3])).astype(np.float32)
             self.camrot[cam] = (krt["extrin"][:3, :3]).astype(np.float32)
-            self.focal[cam] = (np.diag(krt["intrin"][:2, :2]) * 2 / downsample).astype(np.float32)
-            self.princpt[cam] = (krt["intrin"][:2, 2] * 2 / downsample).astype(np.float32)
+            self.focal[cam] = (np.diag(krt["intrin"][:2, :2]) / downsample).astype(np.float32)
+            self.princpt[cam] = (krt["intrin"][:2, 2] / downsample).astype(np.float32)
 
         self.camera_map = dict()
         for i, cam in enumerate(self.cameras):
             self.camera_map[cam] = i
 
-        # Load frame list; ie, (segment, frame) pairs
-        frame_list_path = self.dir / "frame_list.txt"
-        self.framelist = pd.read_csv(frame_list_path, names=["seg_id", "frame_id"], dtype=str, sep=r"\s+")
-
-        # Filter by segments
-        segments_to_keep = ["E001_Neutral_Eyes_Open", "E057_Cheeks_Puffed", "E061_Lips_Puffed"]
-        self.framelist = self.framelist[self.framelist["seg_id"].isin(segments_to_keep)]
-
+        # # Load frame list; ie, (segment, frame) pairs
+        # frame_list_path = self.dir / "frame_splits_list.csv"
+        # self.framelist = pd.read_csv(frame_list_path, dtype=str, sep=r",")
+        
         # Normalization stats
-        texmean = np.asarray(Image.open(self.dir / "tex_mean.png"), dtype=np.float32)
+        texmean = np.asarray(Image.open(self.dir / "uv_images" / "color_mean.avif"), dtype=np.float32)
         self.texmean = einops.rearrange(texmean, "h w c -> c h w").astype(np.float32).copy("C")
-        self.texstd = float(np.genfromtxt(self.dir / "tex_var.txt") ** 0.5)
-        self.vertmean = np.fromfile(self.dir / "vert_mean.bin", dtype=np.float32).reshape(-1, 3)
-        self.vertstd = float(np.genfromtxt(self.dir / "vert_var.txt") ** 0.5)
+        self.texstd = float(np.genfromtxt(self.dir / "uv_images" / "color_variance.txt") ** 0.5)
+        self.vertmean = np.load(self.dir / "kinematic_tracking" / "vertices_mean.npy")
+        self.vertstd = float(np.genfromtxt(self.dir / "kinematic_tracking" / "vertices_variance.txt") ** 0.5)
 
-        # Neutral conditioning
-        # neutral_segment = "EXP_neutral_peak"  # TODO(julieta) choose from a list of potential neutral segments
-        neutral_segment = "E001_Neutral_Eyes_Open"
-        neut_framelist = self.framelist.loc[self.framelist["seg_id"] == neutral_segment].values.tolist()
-        # vlist, tlist = [], []
-        for neut_seg, neut_frame in neut_framelist:
-            verts = np.fromfile(
-                self.dir / f"tracked_mesh/{neut_seg}/{neut_frame}.bin",
-                dtype=np.float32,
-            ).reshape(-1, 3)
-
-            tex_path = self.dir / f"unwrapped_uv_1024/{neut_seg}/average/{neut_frame}.png"
-            tex = np.asarray(Image.open(tex_path))
-            tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
-
-            # vlist.append(verts)
-            # tlist.append(tex)
-            # NOTE(julieta) only load one since this might be causing OOM issues
-            self.neut_avgtex = tex
-            self.neut_vert = verts
-            break
-
-        # assert len(tlist) > 0, "neut_verts should not be empty"
-        # self.neut_avgtexs = tlist
-        # self.neut_verts = vlist
-
-        if self.neut_avgtex is None:
-            raise ValueError("Not able to find any neutral average textures")
-        if self.neut_vert is None:
-            raise ValueError("Not able to find any neutral vertices")
+        self.framelist, self.neut_avgtex, self.neut_vert = get_framelist_neuttex_and_neutvert(self.dir)
 
         # # TODO(julieta) sample randomly from the ones above?
         # self.neut_avgtex = tlist[0]
@@ -281,35 +246,36 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         #     self.bg_imgs[cam_id] = bg_img
         # print(f"Loaded background images in {time.time() - st} seconds")
 
+
     def fetch_data_from_disk(
-        self, segment: str, frame_id: str, camera_id: str
+        self, frame_id: str, camera_id: str
     ) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
         try:
             # Camera image
-            path = self.dir / "images" / segment / camera_id / f"{frame_id}.png"
+            path = self.dir / "images" / f"cam{camera_id}" / f"{int(frame_id):06d}.avif"
             img = Image.open(path)
             img = img.resize((self.width, self.height))  # Make of appropriate size
             img = np.asarray(img)
             img = einops.rearrange(img, "h w c -> c h w").astype(np.float32)
 
             # Mesh
-            path = self.dir / "tracked_mesh" / segment / f"{frame_id}.bin"
-            verts = np.fromfile(path, dtype=np.float32).reshape(-1, 3)
+            path = self.dir / "kinematic_tracking" / "registration_vertices" / f"{int(frame_id):06d}.npy"
+            verts = np.load(path)
 
             # Average texture
-            path = self.dir / "unwrapped_uv_1024" / segment / "average" / f"{frame_id}.png"
+            path = self.dir / "uv_images" / "color" / f"{int(frame_id):06d}.avif"
             avgtex = np.asarray(Image.open(path))
             avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
 
             # Head pose (global transform of the person's head)
-            path = self.dir / "tracked_mesh" / segment / f"{frame_id}_transform.txt"
-            headpose = np.loadtxt(path, dtype=np.float32)
-
+            path = self.dir / "head_poses" / f"{int(frame_id):06d}.npy"
+            headpose = np.load(path)
+            
             if any(i is None for i in (img, verts, avgtex, headpose)):
-                raise ValueError(f"Some of fetched data is None for {segment}-{frame_id}-{camera_id}")
+                raise ValueError(f"Some of fetched data is None for {frame_id}-{camera_id}")
 
         except Exception as e:
-            logger.error(f"Error loading airstore data: {e}")
+            # logger.error(f"Error loading data: {e}")
             return None
 
         # pixelcoords
@@ -338,17 +304,16 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             headpose=headpose,
             frameid=frame_id,
             cameraid=camera_id,
-            segment=segment,
             # id cond info
             validinput=True,
             imagemask=np.ones((1, self.height, self.width), dtype=np.float32),
         )
-
+    
     def __getitem__(self, idx: int) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
-        return self.fetch_data_from_disk(*getitem(idx, self.framelist, self.cameras))
+        return self.fetch_data_from_disk(*getitem(idx, self.framelist, self.cameras)[1:])
 
     def __len__(self):
-        return len(self.framelist)
+        return len(self.cameras) * len(self.framelist)
 
     ### Methods added for compat with previous version of dataset. Might want to revisit these
     def get_allcameras(self) -> Set[str]:

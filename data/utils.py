@@ -4,6 +4,22 @@ import os
 from PIL import Image
 import einops
 
+class MugsyCapture:
+    """Unique identifier for a Mugsy capture"""
+    def __init__(self,
+        mcd: str, # Mugsy capture date in 'yyyymmdd' format, eg `20210223`
+        mct: str, # Mugsy capture time in 'hhmm' format, eg `1023`
+        sid: str, # Subject ID, three letters and three numbers, eg `avw368`
+        is_relightable: bool = False  # Whether this is a relightable capture. Ava-256 does not have relightable captures
+    ):
+        self.mcd = mcd
+        self.mct = mct
+        self.sid = sid
+        self.is_relightable = is_relightable 
+        
+    def folder_name(self) -> str:
+        return f"{self.mcd}--{self.mct}--{self.sid}"
+
 def get_framelist_neuttex_and_neutvert(directory):
     # Load frame list; ie, (segment, frame) pairs
     frame_list_path = f"{directory}/frame_list.csv"

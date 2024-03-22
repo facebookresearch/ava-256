@@ -1,5 +1,5 @@
 train:
-  dataset: "mini_ava"
+  dataset: "ava"
   base_dir: "/home/ekim2/Storage/MetaProject/datasets/AVA_dataset/"
   data_csv: "345_ids.csv"
   nids: 16 # Number of identities to select
