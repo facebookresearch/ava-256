@@ -28,11 +28,11 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         "camera_calibration": ["camera_calibration.pkl"],
         "frame_list": ["frame_list.csv"],
         "head_pose": ["head_pose/head_pose.zip"],
-        "images": ["images/cam{camera}.zip"],  # TODO(julieta) change to image
+        "image": ["image/cam{camera}.zip"],
         "keypoints_3d": ["keypoints_3d/keypoints_3d.zip"],
         "kinematic_tracking": [
-            "kinematic_tracking/vertices_mean.npy",  # TODO(julieta) change to registration_vertices_xxx
-            "kinematic_tracking/vertices_variance.txt",  # TODO(julieta) change to registration_vertices_xxx
+            "kinematic_tracking/registration_vertices_mean.npy",
+            "kinematic_tracking/registration_vertices_variance.txt",
             "kinematic_tracking/registration_vertices.zip",
         ],
         # NOTE(julieta) no light info in ava256
@@ -40,17 +40,16 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         #     "lights/lights_light_calibration.txt",
         #     "lights/light_pattern.txt",
         # ],
-        "segmentation_fgbg": ["segmentation_fgbg/cam{camera}.zip"],
         "segmentation_parts": ["segmentation_parts/cam{camera}.zip"],
         "uv_image": [
-            "uv_images/color_mean.avif",  # TODO(julieta) change to singular
-            "uv_images/color_variance.txt",  # TODO(julieta) change to singular
+            "uv_image/color_mean.png",
+            "uv_image/color_variance.txt",
             "uv_image/color.zip",
         ],
     }
 )
 
-MULTI_CAM_ASSETS = ["images", "segmentation_fgbg", "segmentation_parts"]
+MULTI_CAM_ASSETS = ["image", "segmentation_parts"]
 
 
 @dataclass(frozen=True)
