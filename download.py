@@ -145,7 +145,12 @@ def main():
     captures = load_captures(args.captures_file)
     if args.n > len(captures):
         raise ValueError(f"Requested more captures ({args.n}) than available in captures file ({len(captures)})")
-    logging.info("Downloading the first %d out of %d captures from %s", args.n, len(captures), args.captures_file)
+    logging.info(
+        "Downloading the first %d out of %d captures from %s",
+        args.n,
+        len(captures),
+        args.captures_file,
+    )
     captures = captures[: args.n]
 
     # Create output directory
@@ -170,7 +175,12 @@ def main():
                     camera_lists_dict[capture] = camera_list
 
                 camera_list = camera_lists_dict[capture]
-                logging.info("Found %s cameras for %s: %s", len(camera_list), capture, camera_list)
+                logging.info(
+                    "Found %s cameras for %s: %s",
+                    len(camera_list),
+                    capture,
+                    camera_list,
+                )
 
                 # Generate download links for all the cameras
                 for camera in camera_list:

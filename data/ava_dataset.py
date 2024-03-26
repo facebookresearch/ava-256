@@ -1,27 +1,33 @@
 import bisect
+import io
 import logging
 import logging.handlers
 import math
 import os
 import sys
-import pillow_avif
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union
+from zipfile import Path as ZipPath
 
 import einops
 import numpy as np
 import pandas as pd
+import pillow_avif
+
+# import pytorch3d as p3d
+from plyfile import PlyData
 import torch.utils.data
 from PIL import Image
+
+# from pytorch3d.io import IO
 from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
-from utils import load_camera_Calibration
-from data.utils import get_framelist_neuttex_and_neutvert, getitem
-from data.utils import MugsyCapture
+from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert, getitem
+from utils import load_camera_calibration
 
 mp.set_start_method("spawn", force=True)
 
@@ -33,6 +39,16 @@ stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.DEBUG)
 stdout_handler.setFormatter(formatter)
 logger.addHandler(stdout_handler)
+
+T = TypeVar("T")
+
+
+def none_collate_fn(items: List[T]) -> Optional[torch.Tensor]:
+    """Modified form of :func:`torch.utils.data.dataloader.default_collate`
+    that will strip samples from the batch if they are ``None``."""
+    items = [item for item in items if item is not None]
+    return default_collate(items) if len(items) > 0 else None
+
 
 class MultiCaptureDataset(torch.utils.data.Dataset):
     """
@@ -48,7 +64,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         captures: List[MugsyCapture],
         directories: List[str],
         downsample: int = 4,
-        cameras_specified: List[str] = None
+        cameras_specified: List[str] = None,
     ):
         super().__init__()
 
@@ -60,11 +76,17 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
         # Tuples with all the identifiers of this capture, used in ddp-train
         self.identities = captures
 
-        # Create many single-capture datasets
+        # Load the single-capture datasets
         self.single_capture_datasets = OrderedDict()
-        for capture, dir in tqdm(zip(captures, directories), desc="Loading single id captures"):
-            self.single_capture_datasets[capture] = SingleCaptureDataset(capture, dir, downsample, cameras_specified)
-            
+        for capture, capture_dir in tqdm(
+            zip(captures, directories, strict=True),
+            desc="Loading single id captures",
+            total=len(captures),
+        ):
+            self.single_capture_datasets[capture] = SingleCaptureDataset(
+                capture, capture_dir, downsample, cameras_specified
+            )
+
         # Dataset lengths
         self.cumulative_sizes = np.cumsum([len(x) for x in self.single_capture_datasets.values()])
         self.total_len = self.cumulative_sizes[-1]
@@ -145,7 +167,7 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
             sample_idx = idx
         else:
             sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
-        
+
         capture = self.captures[dataset_idx]
         sample = self.single_capture_datasets[capture][sample_idx]
 
@@ -157,12 +179,13 @@ class MultiCaptureDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.total_len
 
-    ### Methods added for compat with previous version of dataset. Might want to revisit these
     def get_allcameras(self) -> Set[str]:
+        """Get all the cameras in this dataset"""
         other_cameras = [x.get_allcameras() for x in self.single_capture_datasets.values()]
         return set().union(*other_cameras)
 
     def get_img_size(self) -> Tuple[int, int]:
+        """Get the size of camera images in this dataset"""
         return (self.height, self.width)
 
 
@@ -180,7 +203,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         capture: MugsyCapture,
         directory: str,
         downsample: int = 4,
-        cameras_specified: List[str] = None
+        cameras_specified: List[str] = None,
     ):
         super().__init__()
 
@@ -194,18 +217,19 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         # Tuple with all the identifiers of this capture, used in ddp-train
         self.identities = [capture]
 
-        assert os.path.exists(self.dir), f"Dataset directory {self.dir} does not seem to exist"
+        assert self.dir.exists(), f"Dataset directory {self.dir} does not seem to exist"
 
         # Load krt dictionaries
         krt_file = self.dir / "camera_calibration.pkl"
-        krt_dicts = load_camera_Calibration(krt_file)
+        krt_dicts = load_camera_calibration(krt_file)
+
         self.cameras = list(krt_dicts.keys())
-        if cameras_specified is not None: 
-            self.cameras = cameras_specified
-        # for i, cam in enumerate(self.cameras):
-        #     cam_dir = self.dir / "images" / f"cam{int(cam):06d}"
-        #     if not cam_dir.exists():
-        #         self.cameras.pop(i)
+        if cameras_specified is not None:
+            self.cameras = [x for x in cameras_specified if x in self.cameras]
+            if len(self.cameras) == 0:
+                raise ValueError(
+                    f"There are no cameras left for {self.capture}; requested cameras: {cameras_specified}"
+                )
 
         # Pre-load krts in user-friendly dictionaries
         self.campos, self.camrot, self.focal, self.princpt = {}, {}, {}, {}
@@ -219,67 +243,66 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         for i, cam in enumerate(self.cameras):
             self.camera_map[cam] = i
 
-        # # Load frame list; ie, (segment, frame) pairs
-        # frame_list_path = self.dir / "frame_splits_list.csv"
-        # self.framelist = pd.read_csv(frame_list_path, dtype=str, sep=r",")
-        
         # Normalization stats
-        texmean = np.asarray(Image.open(self.dir / "uv_images" / "color_mean.avif"), dtype=np.float32)
+        texmean = np.asarray(Image.open(self.dir / "uv_image" / "color_mean.png"), dtype=np.float32)
         self.texmean = einops.rearrange(texmean, "h w c -> c h w").astype(np.float32).copy("C")
-        self.texstd = float(np.genfromtxt(self.dir / "uv_images" / "color_variance.txt") ** 0.5)
-        self.vertmean = np.load(self.dir / "kinematic_tracking" / "vertices_mean.npy")
-        self.vertstd = float(np.genfromtxt(self.dir / "kinematic_tracking" / "vertices_variance.txt") ** 0.5)
+        self.texstd = float(np.genfromtxt(self.dir / "uv_image" / "color_variance.txt") ** 0.5)
+        self.vertmean = np.load(self.dir / "kinematic_tracking" / "registration_vertices_mean.npy")
+        self.vertstd = float(
+            np.genfromtxt(self.dir / "kinematic_tracking" / "registration_vertices_variance.txt") ** 0.5
+        )
 
         self.framelist, self.neut_avgtex, self.neut_vert = get_framelist_neuttex_and_neutvert(self.dir)
 
-        # # TODO(julieta) sample randomly from the ones above?
-        # self.neut_avgtex = tlist[0]
-        # self.neut_vert = vlist[0]
-
-        # Load background images from NFS
-        # self.bg_model_path = (
-        #     f"{self.metadata_dir}/ca2/learn_bkg_per_camera/{capture.sid.upper()}_{capture.mcd}--0000_codec/"
-        # )
-        # for cam_id in self.cameras:
-        #     bg_img = Image.open(f"{bg_model_path}/bg_{cam_id}.png")
-        #     bg_img = einops.rearrange(np.asarray(bg_img), 'h w c -> c h w').astype(np.float32)  # bg image is current in 1024x667 resolution
-        #     self.bg_imgs[cam_id] = bg_img
-        # print(f"Loaded background images in {time.time() - st} seconds")
-
-
-    def fetch_data_from_disk(
-        self, frame_id: str, camera_id: str
-    ) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
+    def fetch_data_from_disk(self, frame_id: str, camera_id: str) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
         try:
             # Camera image
-            path = self.dir / "images" / f"cam{camera_id}" / f"{int(frame_id):06d}.avif"
-            img = Image.open(path)
+            path = ZipPath(
+                self.dir / "image" / f"cam{camera_id}.zip",
+                f"cam{camera_id}/{int(frame_id):06d}.avif",
+            )
+            img_bytes = path.read_bytes()
+            img = Image.open(io.BytesIO(img_bytes))
             img = img.resize((self.width, self.height))  # Make of appropriate size
             img = np.asarray(img)
             img = einops.rearrange(img, "h w c -> c h w").astype(np.float32)
 
             # Mesh
-            path = self.dir / "kinematic_tracking" / "registration_vertices" / f"{int(frame_id):06d}.npy"
-            verts = np.load(path)
+            path = ZipPath(
+                self.dir / "kinematic_tracking" / "registration_vertices.zip",
+                f"{int(frame_id):06d}.ply",
+            )
+            ply_bytes = path.read_bytes()
+            ply_bytes = io.BytesIO(ply_bytes)
+            # verts, _ = p3d.io.load_ply(io.BytesIO(ply_bytes))
+            plydata = PlyData.read(ply_bytes)
+            verts = plydata["vertex"].data
+            verts = np.array([list(element) for element in verts])
 
             # Average texture
-            path = self.dir / "uv_images" / "color" / f"{int(frame_id):06d}.avif"
-            avgtex = np.asarray(Image.open(path))
+            path = ZipPath(self.dir / "uv_image" / "color.zip", f"{int(frame_id):06d}.avif")
+            avgtex_bytes = path.read_bytes()
+            avgtex = np.asarray(Image.open(io.BytesIO(avgtex_bytes)))
             avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
 
             # Head pose (global transform of the person's head)
-            path = self.dir / "head_poses" / f"{int(frame_id):06d}.npy"
-            headpose = np.load(path)
-            
+            path = ZipPath(self.dir / "head_pose" / "head_pose.zip", f"{int(frame_id):06d}.npy")
+            headpoose_bytes = path.read_bytes()
+            headpose = np.load(io.BytesIO(headpoose_bytes))
+
             if any(i is None for i in (img, verts, avgtex, headpose)):
                 raise ValueError(f"Some of fetched data is None for {frame_id}-{camera_id}")
 
         except Exception as e:
             # logger.error(f"Error loading data: {e}")
+            logger.exception(e)
             return None
 
         # pixelcoords
-        px, py = np.meshgrid(np.arange(self.width).astype(np.float32), np.arange(self.height).astype(np.float32))
+        px, py = np.meshgrid(
+            np.arange(self.width).astype(np.float32),
+            np.arange(self.height).astype(np.float32),
+        )
         pixelcoords = np.stack((px, py), axis=-1)
 
         return dict(
@@ -308,7 +331,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             validinput=True,
             imagemask=np.ones((1, self.height, self.width), dtype=np.float32),
         )
-    
+
     def __getitem__(self, idx: int) -> Optional[Dict[str, Union[np.ndarray, int, str]]]:
         return self.fetch_data_from_disk(*getitem(idx, self.framelist, self.cameras)[1:])
 

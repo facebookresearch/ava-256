@@ -1,8 +1,10 @@
 train:
   dataset: "ava"
   base_dir: "/home/ekim2/Storage/MetaProject/datasets/AVA_dataset/"
-  data_csv: "345_ids.csv"
-  nids: 16 # Number of identities to select
+  # base_dir: "/uca/julieta/oss/release/"
+  # base_dir: "/home/julietamartinez/src/oss-uca1/ava256/"
+  data_csv: "32_ids.csv"
+  nids: 4 # Number of identities to select
   devices: [0] # devices
   checkpoint: # checkpoint to resume training
   maxiter: 10_000_000
@@ -17,11 +19,11 @@ train:
     vertl1: 0.1
     kldiv: 1.0e-3 # 1.0e-3
     primvolsum: 0.01
-  output_set: ["irgbrec", "sampledimg", "primscale"] 
+  output_set: ["irgbrec", "sampledimg", "primscale"]
 
 progress:
   output_path: "run/" # output path where the progress is saved
-  cross_id: True
+  cross_id: False
   cross_id_n_subjects: 6
 
   tensorboard:

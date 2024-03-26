@@ -1,28 +1,22 @@
+import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
 
 import einops
 import numpy as np
 import pandas as pd
-from PIL import Image
-
-# import open3d as o3d
 import torch
 import torch as th
-import pickle
+from igl import point_mesh_squared_distance
+from PIL import Image
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
+
 from data.utils import MugsyCapture
 
-import pickle
-
-# from sklearn.neighbors import KDTree  # noqa
-
-
-from igl import point_mesh_squared_distance
 
 def closest_point(mesh, points):
     """Helper function that mimics trimesh.proximity.closest_point but uses IGL for faster queries."""
@@ -34,6 +28,7 @@ def closest_point(mesh, points):
 
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
+
 def tocuda(d: Union[torch.Tensor, np.ndarray, Dict, List]) -> Union[torch.Tensor, Dict, List]:
     if isinstance(d, torch.Tensor):
         return d.to("cuda")
@@ -43,10 +38,12 @@ def tocuda(d: Union[torch.Tensor, np.ndarray, Dict, List]) -> Union[torch.Tensor
         return [tocuda(v) for v in d]
     else:
         return d
-    
+
+
 def get_renderoptions():
     return dict(dt=1.0)
-    
+
+
 def get_autoencoder(dataset, assetpath: str):
     import torch
 
@@ -121,10 +118,12 @@ def get_autoencoder(dataset, assetpath: str):
 
     return ae
 
+
 def load_checkpoint(ae, filename):
     checkpoint = torch.load(filename)
     ae.load_state_dict(checkpoint, strict=True)
     return ae
+
 
 def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
     """Load a KRT file containing camera parameters
@@ -137,7 +136,7 @@ def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
             'extrin'
     """
     cameras = {}
-    
+
     with open(path, "r") as f:
         while True:
             name = f.readline()
@@ -157,7 +156,8 @@ def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
 
     return cameras
 
-def load_camera_Calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
+
+def load_camera_calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
     """Load a KRT file containing camera parameters
     Args:
         path: File path that contains the KRT information
@@ -167,11 +167,12 @@ def load_camera_Calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.nd
             'dist'
             'extrin'
     """
-    
+
     with open(path, "rb") as f:
         cameras = pickle.load(f)
-    
+
     return cameras
+
 
 def load_obj(path: Union[str, TextIO], return_vn: bool = False) -> ObjectType:
     """Load wavefront OBJ from file. See https://en.wikipedia.org/wiki/Wavefront_.obj_file for file format details
@@ -365,7 +366,7 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
 
     index_img = index_img.numpy()
     bary_img = bary_img.numpy()
-    
+
     idx0 = np.flipud(vi[index_img, 0])
     idx1 = np.flipud(vi[index_img, 1])
     idx2 = np.flipud(vi[index_img, 2])
@@ -381,8 +382,9 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
         "tri": vi,
     }
 
+
 def render_img(listsofimages, outpath):
-    """ saves image given a list of list of images
+    """saves image given a list of list of images
 
     Args:
         listsofimages (List[List[np.array]]): list of list of images
@@ -391,45 +393,41 @@ def render_img(listsofimages, outpath):
     Returns:
         PIL.Image: image
     """
-    
+
     combined_imgs = []
     for images in listsofimages:
         rgb = np.hstack(images)
         combined_imgs.append(rgb)
-    
-    rgb = np.vstack(combined_imgs)
-        
-    rgb = np.clip(rgb, 0, 255).astype(np.uint8)
-    
-    rgb_img = Image.fromarray(rgb)
 
+    rgb = np.vstack(combined_imgs)
+    rgb = np.clip(rgb, 0, 255).astype(np.uint8)
+    rgb_img = Image.fromarray(rgb)
     rgb_img.save(outpath)
-    
+
     return rgb_img
 
-def train_csv_loader(base_dir, csv_path, nids):
-    """ loads train data by id given the csv file of ids
+
+def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[MugsyCapture], List[Path]]:
+    """loads train data by id given the csv file of ids
     Args:
-        base_dir (str): base directory for the dataset
-        csv_path (str): id csv file path
+        base_dir (Path): base directory for the dataset
+        csv_path (Path): id csv file path
         nids (int): number of ids to select from
 
     Returns:
         List[MugsyCapture]: train_captures: list of mugsy captures
-        List[str]: train_dirs: list of directories for all captures
+        List[Path]: train_dirs: list of directories for all captures
     """
-    df = pd.read_csv(csv_path)
-    
+    df = pd.read_csv(csv_path, dtype=str)[:nids]
+
     train_captures = []
     train_dirs = []
-        
-    for i in range(nids):
-        mcd = df.mcd[i]
-        mct = df.mct[i]
-        sid = df.sid[i]
-        capture = MugsyCapture(mcd=str(mcd), mct=str(mct), sid=sid)
-        dir = f"{base_dir}/{mcd:06d}--{mct:04d}--{sid}/decoder"
+
+    for capture in df.itertuples():
+        capture = MugsyCapture(mcd=capture.mcd, mct=capture.mct, sid=capture.sid)
         train_captures.append(capture)
-        train_dirs.append(dir)
-        
+
+        capture_dir = base_dir / capture.folder_name() / "decoder"
+        train_dirs.append(capture_dir)
+
     return train_captures, train_dirs

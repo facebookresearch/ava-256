@@ -14,6 +14,7 @@ extras/
 *.zip
 *.mp4
 assets/rsc-assets
+ava256/
 viz/
 *log/
 */**/__pycache__
