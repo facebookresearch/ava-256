@@ -112,30 +112,22 @@ if __name__ == "__main__":
     __spec__ = None  # to use ipdb
 
     # parse arguments
-    parser = argparse.ArgumentParser(
-        description="Train a codec avatar universal decoder"
-    )
+    parser = argparse.ArgumentParser(description="Train a codec avatar universal decoder")
 
     parser.add_argument(
         "--noprogress",
         action="store_true",
         help="don't output training progress images",
     )
-    parser.add_argument(
-        "--rank", type=int, default=0, help="process rank in distributed training"
-    )
+    parser.add_argument("--rank", type=int, default=0, help="process rank in distributed training")
     parser.add_argument(
         "--worldsize",
         type=int,
         default=1,
         help="the number of processes for distributed training",
     )
-    parser.add_argument(
-        "--masterip", type=str, default="localhost", help="master node ip address"
-    )
-    parser.add_argument(
-        "--masterport", type=str, default="43321", help="master node network port"
-    )
+    parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
+    parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
     parser.add_argument(
         "--nodisplayloss",
         action="store_true",
@@ -155,9 +147,7 @@ if __name__ == "__main__":
         default=None,
         help="file of id list for training or evaluation",
     )
-    parser.add_argument(
-        "--config", default="config.yaml", type=str, help="config yaml file"
-    )
+    parser.add_argument("--config", default="config.yaml", type=str, help="config yaml file")
     parser.add_argument("--opts", default=[], type=str, nargs="+")
 
     args = parser.parse_args()
@@ -212,9 +202,7 @@ if __name__ == "__main__":
 
     tensorboard_logger = None
     if config.progress.tensorboard.logdir is not None and args.rank == 0:
-        tensorboard_logdir = (
-            config.progress.output_path + "/" + config.progress.tensorboard.logdir
-        )
+        tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
 
@@ -241,9 +229,7 @@ if __name__ == "__main__":
     enableddp = False
 
     if args.worldsize > 1:
-        logging.info(
-            f" INIT DDP RANK {args.rank}  WSIZE {args.worldsize}  URL {disturl}"
-        )
+        logging.info(f" INIT DDP RANK {args.rank}  WSIZE {args.worldsize}  URL {disturl}")
         os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
         dist.init_process_group(
             backend="nccl",
@@ -251,9 +237,7 @@ if __name__ == "__main__":
             world_size=args.worldsize,
             rank=args.rank,
         )
-        logging.info(
-            f" distributed training group is initialized at rank : {args.rank}"
-        )
+        logging.info(f" distributed training group is initialized at rank : {args.rank}")
 
         allmembers = None
         loss_quorum = None
@@ -279,12 +263,8 @@ if __name__ == "__main__":
 
     # Load
     if datatype == "ava":
-        train_captures, train_dirs = train_csv_loader(
-            base_dir, train_params.data_csv, train_params.nids
-        )
-        dataset = AvaMultiCaptureDataset(
-            train_captures, train_dirs, downsample=train_params.downsample
-        )
+        train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
+        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
     else:
         raise ValueError(f"Unsupported dataset: {datatype}")
 
@@ -363,9 +343,7 @@ if __name__ == "__main__":
     if enableddp:
         # TODO(julieta) control whether we want to distribute the full model, or just a subset
         # ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=False)
-        ae = torch.nn.parallel.DistributedDataParallel(
-            ae, device_ids=[0], find_unused_parameters=True
-        )
+        ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=True)
 
     optim_type = "adam"
     _, optim = gen_optimizer(
@@ -377,9 +355,7 @@ if __name__ == "__main__":
         tensorboard_logger,
         args.worldsize,
     )
-    scheduler = lr_scheduler.StepLR(
-        optim, step_size=train_params.lr_scheduler_iter, gamma=4 / 3
-    )
+    scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=4 / 3)
 
     logging.info("Autoencoder instantiated ({:.2f} s)".format(time.time() - starttime))
 
@@ -453,15 +429,11 @@ if __name__ == "__main__":
             losses["irgbl1"] = mean_ell_1(output["irgbrec"], cudadata["image"])
 
         if "vertl1" in loss_weights:
-            losses["vertl1"] = mean_ell_1(
-                output["verts"], cudadata["verts"] * vertstd + vertmean
-            )
+            losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
 
         if "primvolsum" in loss_weights:
             primscale = output["primscale"]
-            losses["primvolsum"] = torch.sum(
-                torch.prod(1.0 / primscale, dim=-1), dim=-1
-            )
+            losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
 
         if "kldiv" in loss_weights:
             losses["kldiv"] = kl_loss_stable(output["expr_mu"], output["expr_logstd"])
@@ -473,11 +445,7 @@ if __name__ == "__main__":
         loss = sum(
             [
                 loss_weights[k]
-                * (
-                    torch.sum(v[0]) / torch.sum(v[1]).clamp(min=1e-6)
-                    if isinstance(v, tuple)
-                    else torch.mean(v)
-                )
+                * (torch.sum(v[0]) / torch.sum(v[1]).clamp(min=1e-6) if isinstance(v, tuple) else torch.mean(v))
                 for k, v in losses.items()
             ]
         )
@@ -591,9 +559,7 @@ if __name__ == "__main__":
                 for i in indices_subjects:
                     if i == int(cudadriver["idindex"][0]):
                         continue
-                    cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(
-                        all_neut_avgtex_vert[i]
-                    )
+                    cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i])
 
                     output_driven = ae(
                         cudadriver["camrot"],
@@ -623,9 +589,7 @@ if __name__ == "__main__":
                 del cudadriver
 
                 if args.rank == 0:
-                    imgout = render_img(
-                        [renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png"
-                    )
+                    imgout = render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
 
         save_checkpoints = False
         if iternum < 10_000:
@@ -639,17 +603,13 @@ if __name__ == "__main__":
         if save_checkpoints:
             logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
             torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))
-            torch.save(
-                ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum)
-            )
+            torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
 
         del cudadata
 
         if not args.nodisplayloss:
             logging.info(
-                "Rank {} Iteration {} loss = {:.4f}, ".format(
-                    args.rank, iternum, float(loss.item())
-                )
+                "Rank {} Iteration {} loss = {:.4f}, ".format(args.rank, iternum, float(loss.item()))
                 + ", ".join(
                     [
                         "{} = {:.4f}".format(
@@ -667,10 +627,7 @@ if __name__ == "__main__":
             )
 
         # Tensorboard Logging
-        if (
-            tensorboard_logger is not None
-            and iternum % config.progress.tensorboard.log_freq == 0
-        ):
+        if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
             tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
 
             tb_loss_stats = {}
@@ -701,9 +658,7 @@ if __name__ == "__main__":
             np.save(f"{outpath}/timesinfo_r{args.rank}", times, allow_pickle=True)
 
             logging.info(
-                "Rank {} Iteration {} loss = {:.5f}, ".format(
-                    args.rank, iternum, float(loss.item())
-                )
+                "Rank {} Iteration {} loss = {:.5f}, ".format(args.rank, iternum, float(loss.item()))
                 + ", ".join(
                     [
                         "{} = {:.5f}".format(
