@@ -2,19 +2,17 @@ import io
 import os
 from pathlib import Path
 from typing import Tuple
-from zipfile import Path as ZipPath
+from zipp import Path as ZipPath
 from zipfile import ZipFile
 
 import einops
 import numpy as np
 import pandas as pd
 
-# import pytorch3d as p3d
-
 from PIL import Image
 from plyfile import PlyData
 
-# from pytorch3d.io import IO
+import logging
 
 
 class MugsyCapture:
@@ -65,20 +63,21 @@ def get_framelist_neuttex_and_neutvert(
             if verts_path.exists():
                 ply_bytes = verts_path.read_bytes()
                 ply_bytes = io.BytesIO(ply_bytes)
-                # verts, _ = p3d.io.load_ply(io.BytesIO(ply_bytes))
                 plydata = PlyData.read(ply_bytes)
                 verts = plydata["vertex"].data
                 verts = np.array([list(element) for element in verts])
             else:
+                logging.info(f"{verts_path} does not exist")
                 verts = None
 
-            avgtex_path = ZipPath(avgtex_zip, at=f"{int(neut_frame):06d}.avif")
+            avgtex_path = ZipPath(avgtex_zip, at=f"color/{int(neut_frame):06d}.avif")
             if avgtex_path.exists():
                 img_bytes = avgtex_path.read_bytes()
                 img = Image.open(io.BytesIO(img_bytes))
                 tex = np.asarray(img)
                 tex = einops.rearrange(tex, "h w c -> c h w").astype(np.float32)
             else:
+                logging.info(f"{avgtex_path} does not exist")
                 tex = None
 
             # NOTE(julieta) only load one since this might be causing OOM issues
