@@ -13,3 +13,5 @@ pillow
 pillow-avif-plugin
 pyyaml
 yacs
+plyfile
+fvcore
