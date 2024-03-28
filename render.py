@@ -37,42 +37,28 @@ if __name__ == "__main__":
     train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
     dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
     
-    texmean = dataset.texmean
-    vertmean = dataset.vertmean
-    texstd = dataset.texstd
-    vertstd = dataset.vertstd 
-    
     batchsize = 1
     numworkers = 1
     
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batchsize,
-        # sampler=dummysampler,
         shuffle=False,
         drop_last=True,
         num_workers=numworkers,
-        # pin_memory=True,
         collate_fn=none_collate_fn,
     )
-    
-    
+
     # Get Autoencoder
     assetpath = pathlib.Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=assetpath)
     
-    # Delete dataset because it is no longer used
-    del dataset
 
     # Load from checkpoint
     ae = load_checkpoint(ae, args.checkpoint).cuda()
     
     # Set to Evaluation mode
-    ae.eval()
-
-    # Set batch size and number of workers
-    batchsize = 1
-    numworkers = 1
+    ae.eval()    
 
     # Driver capture dataloader
     driver_capture = MugsyCapture(mcd=args.driver_id.split("--")[0], mct=args.driver_id.split("--")[1], sid=args.driver_id.split("--")[2])
@@ -84,6 +70,14 @@ if __name__ == "__main__":
     driven_dir = f"{args.base_dir}/{args.driven_id}/decoder"
     driven_dataset = MiniAvaSingleCaptureDataset(driven_capture, driven_dir, downsample=args.downsample)
     
+    texmean = dataset.texmean
+    vertmean = dataset.vertmean
+    texstd = dataset.texstd
+    vertstd = dataset.vertstd 
+    
+    # Delete dataset because it is no longer used
+    del dataset
+
     # Grab driven normalization stats
     for dataset in [driver_dataset, driven_dataset]:
         dataset.texmean = texmean
@@ -95,14 +89,14 @@ if __name__ == "__main__":
     if args.segment_id:
         driver_dataset.framelist = driver_dataset.framelist.loc[driver_dataset.framelist["seg_id"] == args.segment_id]
     if driver_dataset.framelist == []:
-        raise ValueError("Can't render with empty framelist!")
-    
+        raise ValueError(f"Asked to render Segment {args.segment_id}, but there are no frames with that Segment in {driver_capture}")
+
     # select only desired cameras
     if args.camera_id:
         if args.camera_id in driver_dataset.cameras:
             driver_dataset.cameras = [args.camera_id]
         else: 
-            raise ValueError(f"Camera id {args.camera_id} doesn't exist!")
+            raise ValueError(f"Camera id {args.camera_id} is not defined for {driver_capture}")
     else:
         # TODO (Emily): Generalize choosing from frontal cameras i.e. ["401031", "401880", "401878"]
         driver_dataset.cameras = ["401031"]
@@ -110,22 +104,19 @@ if __name__ == "__main__":
     driver_loader = torch.utils.data.DataLoader(
         driver_dataset,
         batch_size=batchsize,
-        # sampler=dummysampler,
         shuffle=False,
         drop_last=False,
         num_workers=numworkers,
-        # pin_memory=True,
+
         collate_fn=none_collate_fn,
     )
     
     driven_loader = torch.utils.data.DataLoader(
         driven_datasetset,
         batch_size=batchsize,
-        # sampler=dummysampler,
         shuffle=False,
         drop_last=False,
         num_workers=numworkers,
-        # pin_memory=True,
         collate_fn=none_collate_fn,
     )
     driveniter = iter(driven_loader)

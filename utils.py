@@ -108,7 +108,7 @@ def get_autoencoder(dataset, assetpath: str):
         bgmodel=bgmodel,
     )
 
-    # DO NOT RUN VGG AT ALL and remove vgg in loss_weight for ABLATION TEST : @@@@
+
     print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
     print(f"encoder params: {sum(p.numel() for p in ae.expr_encoder.parameters() if p.requires_grad):_}")
     print(f"decoder params: {sum(p.numel() for p in ae.decoder_assembler.parameters() if p.requires_grad):_}")
@@ -400,6 +400,7 @@ def render_img(listsofimages, outpath):
         combined_imgs.append(rgb)
 
     rgb = np.vstack(combined_imgs)
+
     rgb = np.clip(rgb, 0, 255).astype(np.uint8)
     rgb_img = Image.fromarray(rgb)
     rgb_img.save(outpath)
