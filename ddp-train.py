@@ -24,14 +24,19 @@ import torch.utils.data
 import yaml
 from fvcore.common.config import CfgNode as CN
 from torch.utils.tensorboard import SummaryWriter
+import torch.optim.lr_scheduler as lr_scheduler
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
-from progress_writer import Progress
-from utils import get_autoencoder, load_checkpoint, render_img, train_csv_loader
+from utils import load_checkpoint, get_autoencoder, render_img, train_csv_loader, tocuda
+from data.utils import get_framelist_neuttex_and_neutvert
 
 sys.dont_write_bytecode = True
 
@@ -87,17 +92,6 @@ def import_module(file_path, module_name):
     return module
 
 
-def tocuda(d: Union[torch.Tensor, Dict, List]) -> Union[torch.Tensor, Dict, List]:
-    if isinstance(d, torch.Tensor):
-        return d.to("cuda")
-    elif isinstance(d, dict):
-        return {k: tocuda(v) for k, v in d.items()}
-    elif isinstance(d, list):
-        return [tocuda(v) for v in d]
-    else:
-        return d
-
-
 def check_quorum(token, allmembers):
     size = dist.get_world_size()
     dist.all_reduce(token, op=dist.ReduceOp.SUM, group=allmembers)
@@ -108,155 +102,20 @@ def check_quorum(token, allmembers):
     return ResetFlag
 
 
-if __name__ == "__main__":
-    __spec__ = None  # to use ipdb
+def setup(rank, world_size, masterport):
+    logging.info(f"Rank is: {rank}")
+    os.environ["CUDA_VISIBLE_DEVICES"] = f"{rank}"
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = masterport
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    # parse arguments
-    parser = argparse.ArgumentParser(description="Train a codec avatar universal decoder")
 
-    parser.add_argument(
-        "--noprogress",
-        action="store_true",
-        help="don't output training progress images",
-    )
-    parser.add_argument("--rank", type=int, default=0, help="process rank in distributed training")
-    parser.add_argument(
-        "--worldsize",
-        type=int,
-        default=1,
-        help="the number of processes for distributed training",
-    )
-    parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
-    parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
-    parser.add_argument(
-        "--nodisplayloss",
-        action="store_true",
-        help="logging loss value every iteration",
-    )
+def cleanup():
+    dist.destroy_process_group()
 
-    # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
-    parser.add_argument(
-        "--ids2use",
-        type=int,
-        default=-1,
-        help="the number of processes for distributed training",
-    )
-    parser.add_argument(
-        "--idfilepath",
-        type=str,
-        default=None,
-        help="file of id list for training or evaluation",
-    )
-    parser.add_argument("--config", default="config.yaml", type=str, help="config yaml file")
-    parser.add_argument("--opts", default=[], type=str, nargs="+")
 
-    args = parser.parse_args()
-
-    with open(args.config, "r") as file:
-        config = CN(yaml.load(file, Loader=yaml.UnsafeLoader))
-
-    config.merge_from_list(args.opts)
-
-    if config.progress.cross_id:
-        if config.train.nids < config.progress.cross_id_n_subjects:
-            raise ValueError(
-                f"Cannot do cross evaluation on {config.progress.cross_id_n_subjects} subjects, there are only up to {config.train.nids} captures available"
-            )
-
-    print(config)
-
-    train_params = config.train
-
-    # TODO(julieta) remove all references to SLURM variables
-    args.worldsize = int(os.environ.get("SLURM_NTASKS", args.worldsize))
-    args.rank = int(os.environ.get("SLURM_PROCID", args.rank))
-
-    current_file = os.path.abspath(__file__)
-    current_dir = os.path.dirname(current_file)
-    outpath = os.environ.get(
-        "RSC_RUN_DIR", os.path.join(current_dir, config.progress.output_path)
-    )  # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
-    os.makedirs(f"{outpath}/x-id", exist_ok=True)
-    # os.makedirs(outpath, exist_ok=True)
-
-    logpath = "{}/log-r{}.txt".format(outpath, args.rank)
-
-    # if path exists append automatically
-    # logging.info(f"Python {sys.version}")
-    # logging.info(f"PyTorch {torch.__version__}")
-    # logging.info(" ".join(sys.argv))
-    # logging.info(f"Output path: {outpath}")
-
-    # logging.info(" ==================================================== ")
-    # logging.info(" args.rank: {}, args: {}".format(args.rank, args))
-    # v_devices = os.getenv("CUDA_VISIBLE_DEVICES", "NOTFOUND")
-    # logging.info(" ==================================================== ")
-    # logging.info(
-    #     " At rank {} DEVICE COUNT : {} -- CUDA VISIBLE DEVICES {}".format(
-    #         args.rank, torch.cuda.device_count(), v_devices
-    #     )
-    # )
-    # logging.info(" ==================================================== ")
-
-    cuda_device_count = torch.cuda.device_count()
-
-    tensorboard_logger = None
-    if config.progress.tensorboard.logdir is not None and args.rank == 0:
-        tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
-        logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
-        tensorboard_logger = SummaryWriter(tensorboard_logdir)
-
-    # logging.info("@@@@@@@@@@@@@@@ JOB CONFIG:")
-    # logging.info(args)
-    # logging.info("@@@@@@@@@@@@@@@ END OF JOB CONFIG \n")
-
-    # logging.info("@@@@@@@@@@@@@@@ OS ENV VARIABLES (from sbatch):")
-    # for k, v in os.environ.items():
-    #     logging.info(f"{k}:{v}")
-    # logging.info("@@@@@@@@@@@@@@@ END OF OS ENV VARIABLES :")
-
-    # logging.info(f"master ip {args.masterip}")
-
-    rank = args.rank
-    worldsize = args.worldsize
-
-    disturl = f"tcp://{args.masterip}:{args.masterport}"
-    logging.info(f" DIST URL : {disturl}")
-
-    # TODO(julieta) get the number of workers from the command line
-    numworkers = train_params.num_workers
-
-    enableddp = False
-
-    if args.worldsize > 1:
-        logging.info(f" INIT DDP RANK {args.rank}  WSIZE {args.worldsize}  URL {disturl}")
-        os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
-        dist.init_process_group(
-            backend="nccl",
-            init_method=disturl,
-            world_size=args.worldsize,
-            rank=args.rank,
-        )
-        logging.info(f" distributed training group is initialized at rank : {args.rank}")
-
-        allmembers = None
-        loss_quorum = None
-        allmembers = dist.new_group(range(worldsize))
-        loss_quorum = torch.tensor([1]).cuda()
-
-        enableddp = True
-
-    starttime = time.time()
-    if not args.noprogress:
-        progressprof = Progress()
-
-    batchsize = train_params.batchsize
-    learning_rate = train_params.init_learning_rate
-
-    # build dataset & testing dataset
-    starttime = time.time()
-
-    base_dir = Path(train_params.base_dir)
+def prepare(rank, world_size, train_params):
+    base_dir = train_params.base_dir
     datatype = train_params.dataset
     train_dirs = None
     train_captures = None
@@ -268,23 +127,20 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported dataset: {datatype}")
 
-    vertmean, vertstd = torch.Tensor(dataset.vertmean).cuda(), dataset.vertstd
+    starttime = time.time()
 
     maxiter = train_params.maxiter  # that ought to be enough for anyone
-    logging.info(" maxiter :  {}, batchsize: {}".format(maxiter, batchsize))
+    logging.info(" maxiter :  {}, batchsize: {}".format(maxiter, train_params.batchsize))
 
-    # dummysampler = AirstoreDummySampler(dataset)
-    dummysampler = torch.utils.data.RandomSampler(
-        dataset, replacement=True, num_samples=maxiter * batchsize * 2
-    )  # infinite random sampler
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=batchsize,
-        sampler=dummysampler,
+        batch_size=train_params.batchsize,
+        sampler=sampler,
         shuffle=False,
         drop_last=True,
-        num_workers=numworkers,
+        num_workers=train_params.num_workers,
         collate_fn=none_collate_fn,
     )
 
@@ -296,25 +152,22 @@ if __name__ == "__main__":
 
         neut_avgtex = (neut_avgtex - dataset.texmean) / dataset.texstd
         neut_verts = (neut_vert - dataset.vertmean) / dataset.vertstd
-        all_neut_avgtex_vert.append(
-            {
-                "neut_avgtex": torch.Tensor(neut_avgtex),
-                "neut_verts": torch.Tensor(neut_verts),
-            }
-        )
+        all_neut_avgtex_vert.append({"neut_avgtex": torch.tensor(neut_avgtex), "neut_verts": torch.tensor(neut_verts)})
 
     # Driver data for x-id
     driver_dataset = AvaMultiCaptureDataset(
-        train_captures,
-        train_dirs,
-        downsample=train_params.downsample,
-        cameras_specified=FRONTAL_CAMERAS,
+        train_captures, train_dirs, downsample=train_params.downsample, cameras_specified=FRONTAL_CAMERAS
+    )
+
+    driver_sampler = DistributedSampler(
+        driver_dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False
     )
 
     driver_dataloader = torch.utils.data.DataLoader(
         driver_dataset,
         batch_size=1,
-        shuffle=True,
+        sampler=driver_sampler,
+        shuffle=False,
         drop_last=True,
         num_workers=1,
         collate_fn=none_collate_fn,
@@ -322,44 +175,166 @@ if __name__ == "__main__":
 
     logging.info("Datasets instantiated ({:.2f} s)".format(time.time() - starttime))
 
-    # data writer
-    starttime = time.time()
-    if not args.noprogress:
-        writer = progressprof.get_writer()
-        logging.debug("Writer instantiated ({:.2f} s)".format(time.time() - starttime))
+    return dataset, all_neut_avgtex_vert, dataloader, driver_dataloader
 
-    # build autoencoder
+
+def xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum):
+    starttime = time.time()
+
+    indices_subjects = random.sample(range(0, len(all_neut_avgtex_vert)), config.progress.cross_id_n_subjects)
+    indices_subjects.sort()
+    ae.eval()
+
+    with torch.no_grad():
+        driver = next(driver_dataiter)
+        while driver is None:
+            torch.cuda.empty_cache()
+            driver = next(driver_dataiter)
+
+        cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)
+
+        gt = cudadriver["image"].detach().cpu().numpy()
+        gt = einops.rearrange(gt, "1 c h w -> h w c")
+        renderImages_xid = []
+        renderImages_xid.append(gt)
+
+        running_avg_scale = False
+        gt_geo = None
+        residuals_weight = 1.0
+
+        output_driver = ae(
+            cudadriver["camrot"],
+            cudadriver["campos"],
+            cudadriver["focal"],
+            cudadriver["princpt"],
+            cudadriver["modelmatrix"],
+            cudadriver["avgtex"],
+            cudadriver["verts"],
+            cudadriver["neut_avgtex"],
+            cudadriver["neut_verts"],
+            cudadriver["pixelcoords"],
+            cudadriver["idindex"],
+            cudadriver["camindex"],
+            running_avg_scale=running_avg_scale,
+            gt_geo=gt_geo,
+            residuals_weight=residuals_weight,
+            output_set=output_set,
+        )
+
+        rgb_driver = output_driver["irgbrec"].detach().cpu().numpy()
+        rgb_driver = einops.rearrange(rgb_driver, "1 c h w -> h w c")
+        del output_driver
+        renderImages_xid.append(rgb_driver)
+
+        for i in indices_subjects:
+            if i == int(cudadriver["idindex"][0]):
+                continue
+            cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i])
+
+            output_driven = ae(
+                cudadriver["camrot"],
+                cudadriver["campos"],
+                cudadriver["focal"],
+                cudadriver["princpt"],
+                cudadriver["modelmatrix"],
+                cudadriver["avgtex"],
+                cudadriver["verts"],
+                torch.unsqueeze(cudadriven["neut_avgtex"], 0),
+                torch.unsqueeze(cudadriven["neut_verts"], 0),
+                cudadriver["pixelcoords"],
+                cudadriver["idindex"],
+                cudadriver["camindex"],
+                running_avg_scale=running_avg_scale,
+                gt_geo=gt_geo,
+                residuals_weight=residuals_weight,
+                output_set=output_set,
+            )
+            rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
+            rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
+            del output_driven
+            renderImages_xid.append(rgb_driven)
+            del cudadriven
+    del cudadriver
+    if rank == 0:
+        render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
+
+    print(f"Cross ID viz took {time.time() - starttime}")
+
+
+def main(rank, world_size, config, args):
+    setup(rank, world_size, args.masterport)
+
+    train_params = config.train
+
+    current_file = os.path.abspath(__file__)
+    current_dir = os.path.dirname(current_file)
+    outpath = os.environ.get(
+        "RSC_RUN_DIR", os.path.join(current_dir, config.progress.output_path)
+    )  # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
+    os.makedirs(f"{outpath}/x-id", exist_ok=True)
+    # os.makedirs(outpath, exist_ok=True)
+
+    logpath = "{}/log-r{}.txt".format(outpath, rank)
+
+    # if path exists append automatically
+    logging.info(f"Python {sys.version}")
+    logging.info(f"PyTorch {torch.__version__}")
+    logging.info(" ".join(sys.argv))
+    logging.info(f"Output path: {outpath}")
+
+    logging.info(" ==================================================== ")
+    logging.info(" rank: {}, args: {}".format(rank, args))
+    v_devices = os.getenv("CUDA_VISIBLE_DEVICES", "NOTFOUND")
+    logging.info(" ==================================================== ")
+    logging.info(
+        " At rank {} DEVICE COUNT : {} -- CUDA VISIBLE DEVICES {}".format(rank, torch.cuda.device_count(), v_devices)
+    )
+    logging.info(" ==================================================== ")
+
+    tensorboard_logger = None
+    if config.progress.tensorboard.logdir is not None and rank == 0:
+        tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
+        logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
+        tensorboard_logger = SummaryWriter(tensorboard_logdir)
+
+    logging.info("@@@@@@@@@@@@@@@ JOB CONFIG:")
+    logging.info(args)
+    logging.info("@@@@@@@@@@@@@@@ END OF JOB CONFIG \n")
+
+    logging.info("@@@@@@@@@@@@@@@ OS ENV VARIABLES (from sbatch):")
+    for k, v in os.environ.items():
+        logging.info(f"{k}:{v}")
+    logging.info("@@@@@@@@@@@@@@@ END OF OS ENV VARIABLES :")
+
+    # if not args.noprogress:
+    #         writer = progressprof.get_writer()
+    #         logging.debug("Writer instantiated ({:.2f} s)".format(time.time() - starttime))
+
+    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(rank, world_size, train_params)
+
     starttime = time.time()
     assetpath = pathlib.Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
 
-    # load checkpoint
     if train_params.checkpoint:
         ae = load_checkpoint(ae, train_params.checkpoint)
-    ae = ae.to("cuda").train()
+    ae = ae.train().to("cuda")
 
-    iternum = 0
+    vertmean, vertstd = torch.Tensor(dataset.vertmean).to("cuda"), dataset.vertstd
 
-    if enableddp:
-        # TODO(julieta) control whether we want to distribute the full model, or just a subset
-        # ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=False)
-        ae = torch.nn.parallel.DistributedDataParallel(ae, device_ids=[0], find_unused_parameters=True)
+    model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
     optim_type = "adam"
     _, optim = gen_optimizer(
         ae,
         optim_type,
-        batchsize,
-        args.rank,
-        learning_rate,
+        train_params.batchsize,
+        rank,
+        train_params.init_learning_rate,
         tensorboard_logger,
         args.worldsize,
     )
-    scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=4 / 3)
-
-    logging.info("Autoencoder instantiated ({:.2f} s)".format(time.time() - starttime))
-
-    starttime = time.time()
+    scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=train_params.gamma)
 
     loss_weights: Dict[str, float] = {
         "irgbl1": train_params.losses.irgbl1,
@@ -376,8 +351,6 @@ if __name__ == "__main__":
 
     # Total experiment time
     lstart = time.time()
-
-    prevtime = time.time()
 
     output_set = set(train_params.output_set)
     logging.info("OUTPUT SET :{}".format(output_set))
@@ -450,31 +423,6 @@ if __name__ == "__main__":
             ]
         )
 
-        # TODO(julieta) DECIDE: do we want to keep explosion detection? Probably not?
-        # local_explosion = not args.nostab and (loss.item() > 400 * prevloss or not np.isfinite(loss.item()))
-        # loss_explosion = False
-        # if enableddp:
-        #     loss_quorum[0] = 1
-        #     if local_explosion:
-        #         loss_quorum[0] = 0
-        #         logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
-        #     loss_explosion = check_quorum(loss_quorum, allmembers)
-        # else:
-        #     if local_explosion:
-        #         logging.warning(f"rank {args.rank} is seeing unstable loss value(s): {loss.item()}")
-        #         loss_explosion = True
-
-        # if local_explosion:
-        #     # raise RuntimeError("Cannot recover from loss explosion!")
-        #     try:
-        #         logging.warning(
-        #             f"Rank {args.rank} found a sample with loss explosion for id {cudadata['idindex'].tolist()}, setting no grad"
-        #         )
-        #     except Exception as e:
-        #         print(e)
-        #     # loss.register_hook(lambda grad: torch.zeros_like(grad))
-        #     # loss_explosion = False
-
         optim.zero_grad()
         loss.backward()
         params = [p for pg in optim.param_groups for p in pg["params"]]
@@ -491,7 +439,6 @@ if __name__ == "__main__":
         # and an explicit one to check for loss explosion
         iter_total_time = time.time() - iter_start_time
 
-        imgout = None
         # print progress
         if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
             renderImages = []
@@ -504,92 +451,13 @@ if __name__ == "__main__":
                 rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
                 renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
 
-            if args.rank == 0:
+            if rank == 0:
                 imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
 
             # cross id generation
-            if config.progress.cross_id:
-
-                indices_subjects = random.sample(
-                    range(0, len(all_neut_avgtex_vert)),
-                    config.progress.cross_id_n_subjects,
-                )
-                indices_subjects.sort()
-
-                driver = next(driver_dataiter)
-                while driver is None:
-                    driver = next(driver_dataiter)
-
-                cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)
-
-                gt = cudadriver["image"].detach().cpu().numpy()
-                gt = einops.rearrange(gt, "1 c h w -> h w c")
-                renderImages_xid = []
-                renderImages_xid.append(gt)
-
-                ae.eval()
-                running_avg_scale = False
-                gt_geo = None
-                residuals_weight = 1.0
-
-                output_driver = ae(
-                    cudadriver["camrot"],
-                    cudadriver["campos"],
-                    cudadriver["focal"],
-                    cudadriver["princpt"],
-                    cudadriver["modelmatrix"],
-                    cudadriver["avgtex"],
-                    cudadriver["verts"],
-                    cudadriver["neut_avgtex"],
-                    cudadriver["neut_verts"],
-                    cudadriver["pixelcoords"],
-                    cudadriver["idindex"],
-                    cudadriver["camindex"],
-                    running_avg_scale=running_avg_scale,
-                    gt_geo=gt_geo,
-                    residuals_weight=residuals_weight,
-                    output_set=output_set,
-                )
-
-                rgb_driver = output_driver["irgbrec"].detach().cpu().numpy()
-                rgb_driver = einops.rearrange(rgb_driver, "1 c h w -> h w c")
-                del output_driver
-                renderImages_xid.append(rgb_driver)
-
-                for i in indices_subjects:
-                    if i == int(cudadriver["idindex"][0]):
-                        continue
-                    cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i])
-
-                    output_driven = ae(
-                        cudadriver["camrot"],
-                        cudadriver["campos"],
-                        cudadriver["focal"],
-                        cudadriver["princpt"],
-                        cudadriver["modelmatrix"],
-                        cudadriver["avgtex"],
-                        cudadriver["verts"],
-                        torch.unsqueeze(cudadriven["neut_avgtex"], 0),
-                        torch.unsqueeze(cudadriven["neut_verts"], 0),
-                        cudadriver["pixelcoords"],
-                        cudadriver["idindex"],
-                        cudadriver["camindex"],
-                        running_avg_scale=running_avg_scale,
-                        gt_geo=gt_geo,
-                        residuals_weight=residuals_weight,
-                        output_set=output_set,
-                    )
-                    rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
-                    rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
-                    del output_driven
-                    renderImages_xid.append(rgb_driven)
-                    del cudadriven
+            if config.progress.cross_id and rank == 0:
+                xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
                 ae.train()
-
-                del cudadriver
-
-                if args.rank == 0:
-                    imgout = render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
 
         save_checkpoints = False
         if iternum < 10_000:
@@ -601,7 +469,7 @@ if __name__ == "__main__":
                 save_checkpoints = True
 
         if save_checkpoints:
-            logging.warning(f"rank {args.rank} save checkpoint to outpath {outpath}")
+            logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
             torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))
             torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
 
@@ -609,7 +477,7 @@ if __name__ == "__main__":
 
         if not args.nodisplayloss:
             logging.info(
-                "Rank {} Iteration {} loss = {:.4f}, ".format(args.rank, iternum, float(loss.item()))
+                "Rank {} Iteration {} loss = {:.4f}, ".format(rank, iternum, float(loss.item()))
                 + ", ".join(
                     [
                         "{} = {:.4f}".format(
@@ -647,18 +515,19 @@ if __name__ == "__main__":
             #     tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
             # except:
             #     raise ValueError("Tensorboard cannot log images because it is None.")
+        maxiter = train_params.maxiter  # that ought to be enough for anyone
 
         if iternum >= maxiter:
             logging.info(
-                f"Stopping training due to max iter limit, rank {args.rank} curr iter {iternum} max allowed iter {maxiter}"
+                f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} max allowed iter {maxiter}"
             )
             lend = time.time()
             totaltime = lend - lstart
             times = {"totaltime": totaltime, "maxiter": iternum}
-            np.save(f"{outpath}/timesinfo_r{args.rank}", times, allow_pickle=True)
+            np.save(f"{outpath}/timesinfo_r{rank}", times, allow_pickle=True)
 
             logging.info(
-                "Rank {} Iteration {} loss = {:.5f}, ".format(args.rank, iternum, float(loss.item()))
+                "Rank {} Iteration {} loss = {:.5f}, ".format(rank, iternum, float(loss.item()))
                 + ", ".join(
                     [
                         "{} = {:.5f}".format(
@@ -682,4 +551,44 @@ if __name__ == "__main__":
         iternum += 1
 
     # cleanup
-    writer.finalize()
+    # writer.finalize()
+
+    cleanup()
+
+
+if __name__ == "__main__":
+    __spec__ = None  # to use ipdb
+
+    # parse arguments
+    parser = argparse.ArgumentParser(description="Train an autoencoder")
+
+    parser.add_argument("--ablationcamera", action="store_true", help="running ablation camera experiments")
+    parser.add_argument("--noprogress", action="store_true", help="don't output training progress images")
+    parser.add_argument("--nostab", action="store_true", help="don't check loss stability")
+    parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
+    parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
+    parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
+    parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
+    parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
+    parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
+
+    # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
+    parser.add_argument("--idfilepath", type=str, default=None, help="file of id list for training or evaluation")
+    parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
+    parser.add_argument("--opts", default=[], type=str, nargs="+")
+
+    args = parser.parse_args()
+
+    with open(args.config, "r") as file:
+        config = CN(yaml.load(file, Loader=yaml.UnsafeLoader))
+
+    config.merge_from_list(args.opts)
+
+    train_params = config.train
+
+    world_size = config.train.num_gpus
+
+    if world_size > 1:
+        mp.spawn(main, args=(world_size, config, args), nprocs=world_size)
+    else:
+        main(0, 1, config, args)

@@ -27,6 +27,7 @@ def generate_geomap(geo: torch.Tensor, uv_tidx: torch.Tensor, uv_bary: torch.Ten
 
     n = geo.shape[0]
     g = geo.view(n, -1, 3).permute(0, 2, 1)
+            
     geomap = (
         g[:, :, uv_tidx[0]] * uv_bary[0][None, None, :, :]
         + g[:, :, uv_tidx[1]] * uv_bary[1][None, None, :, :]

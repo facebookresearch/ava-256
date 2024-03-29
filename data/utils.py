@@ -43,7 +43,7 @@ def get_framelist_neuttex_and_neutvert(
     """
 
     # Load frame list; ie, (segment, frame) pairs
-    frame_list_path = dataset_dir / "frame_list.csv"
+    frame_list_path = f"{dataset_dir}/frame_list.csv"
     framelist = pd.read_csv(frame_list_path, dtype=str, sep=r",")
 
     # Neutral conditioning
@@ -52,8 +52,8 @@ def get_framelist_neuttex_and_neutvert(
     neut_avgtex = None
     neut_vert = None
 
-    avgtex_zip_fname = dataset_dir / "uv_image/color.zip"
-    vertices_zip_fname = dataset_dir / "kinematic_tracking/registration_vertices.zip"
+    avgtex_zip_fname = f"{dataset_dir}/uv_image/color.zip"
+    vertices_zip_fname = f"{dataset_dir}/kinematic_tracking/registration_vertices.zip"
 
     with ZipFile(avgtex_zip_fname, "r") as avgtex_zip, ZipFile(vertices_zip_fname, "r") as vertices_zip:
 
@@ -70,7 +70,7 @@ def get_framelist_neuttex_and_neutvert(
                 logging.info(f"{verts_path} does not exist")
                 verts = None
 
-            avgtex_path = ZipPath(avgtex_zip, at=f"color/{int(neut_frame):06d}.avif")
+            avgtex_path = ZipPath(avgtex_zip, at=f"{int(neut_frame):06d}.avif")
             if avgtex_path.exists():
                 img_bytes = avgtex_path.read_bytes()
                 img = Image.open(io.BytesIO(img_bytes))

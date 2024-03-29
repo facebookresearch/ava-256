@@ -108,7 +108,6 @@ def get_autoencoder(dataset, assetpath: str):
         bgmodel=bgmodel,
     )
 
-
     print("id_encoder params:", sum(p.numel() for p in ae.id_encoder.parameters() if p.requires_grad))
     print(f"encoder params: {sum(p.numel() for p in ae.expr_encoder.parameters() if p.requires_grad):_}")
     print(f"decoder params: {sum(p.numel() for p in ae.decoder_assembler.parameters() if p.requires_grad):_}")
@@ -428,7 +427,7 @@ def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[Mu
         capture = MugsyCapture(mcd=capture.mcd, mct=capture.mct, sid=capture.sid)
         train_captures.append(capture)
 
-        capture_dir = base_dir / capture.folder_name() / "decoder"
+        capture_dir = f"{base_dir}/{capture.folder_name()}/decoder"
         train_dirs.append(capture_dir)
 
     return train_captures, train_dirs

@@ -1,6 +1,7 @@
 """
 Volumetric autoencoder (image -> encoding -> volume -> image)
 """
+
 from typing import Dict, Optional, Set
 
 import einops
@@ -63,6 +64,7 @@ class Autoencoder(nn.Module):
         gt_geo: Optional[torch.Tensor] = None,
         residuals_weight: float = 1.0,
         output_set: Set[str] = set(),
+        force_neutral=False,
     ) -> Dict[str, Optional[torch.Tensor]]:
         """
         Params
@@ -108,6 +110,9 @@ class Autoencoder(nn.Module):
             neut_verts=neut_verts,
             neut_avgtex=neut_avgtex,
         )
+
+        if force_neutral:
+            expr_code = torch.zeros_like(expr_code)
 
         expr_code, expr_mu, expr_logstd = self.bottleneck(expr_code)
 

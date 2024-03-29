@@ -107,12 +107,11 @@ if __name__ == "__main__":
         shuffle=False,
         drop_last=False,
         num_workers=numworkers,
-
         collate_fn=none_collate_fn,
     )
     
     driven_loader = torch.utils.data.DataLoader(
-        driven_datasetset,
+        driven_dataset,
         batch_size=batchsize,
         shuffle=False,
         drop_last=False,

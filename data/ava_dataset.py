@@ -280,7 +280,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             verts = np.array([list(element) for element in verts])
 
             # Average texture
-            path = ZipPath(self.dir / "uv_image" / "color.zip", f"color/{int(frame_id):06d}.avif")
+            path = ZipPath(self.dir / "uv_image" / "color.zip", f"{int(frame_id):06d}.avif")
             avgtex_bytes = path.read_bytes()
             avgtex = np.asarray(Image.open(io.BytesIO(avgtex_bytes)))
             avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
