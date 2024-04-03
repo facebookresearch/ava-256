@@ -104,7 +104,7 @@ def check_quorum(token, allmembers):
 
 def setup(rank, world_size, masterport):
     logging.info(f"Rank is: {rank}")
-    os.environ["CUDA_VISIBLE_DEVICES"] = f"{rank}"
+    torch.cuda.set_device(rank)
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = masterport
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -178,17 +178,16 @@ def prepare(rank, world_size, train_params):
     return dataset, all_neut_avgtex_vert, dataloader, driver_dataloader
 
 
-def xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum):
+def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum):
     starttime = time.time()
 
     indices_subjects = random.sample(range(0, len(all_neut_avgtex_vert)), config.progress.cross_id_n_subjects)
     indices_subjects.sort()
-    ae.eval()
+    model.eval()
 
     with torch.no_grad():
         driver = next(driver_dataiter)
         while driver is None:
-            torch.cuda.empty_cache()
             driver = next(driver_dataiter)
 
         cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)
@@ -202,7 +201,7 @@ def xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outp
         gt_geo = None
         residuals_weight = 1.0
 
-        output_driver = ae(
+        output_driver = model(
             cudadriver["camrot"],
             cudadriver["campos"],
             cudadriver["focal"],
@@ -231,7 +230,7 @@ def xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outp
                 continue
             cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i])
 
-            output_driven = ae(
+            output_driven = model(
                 cudadriver["camrot"],
                 cudadriver["campos"],
                 cudadriver["focal"],
@@ -326,7 +325,7 @@ def main(rank, world_size, config, args):
 
     optim_type = "adam"
     _, optim = gen_optimizer(
-        ae,
+        model,
         optim_type,
         train_params.batchsize,
         rank,
@@ -374,7 +373,7 @@ def main(rank, world_size, config, args):
             gt_geo = cudadata["verts"]
             residuals_weight = 0.0
 
-        output = ae(
+        output = model(
             cudadata["camrot"],
             cudadata["campos"],
             cudadata["focal"],
@@ -422,9 +421,9 @@ def main(rank, world_size, config, args):
                 for k, v in losses.items()
             ]
         )
-
         optim.zero_grad()
         loss.backward()
+
         params = [p for pg in optim.param_groups for p in pg["params"]]
 
         for p in params:
@@ -432,7 +431,7 @@ def main(rank, world_size, config, args):
                 p.grad.data[torch.isnan(p.grad.data)] = 0
                 p.grad.data[torch.isinf(p.grad.data)] = 0
 
-        torch.nn.utils.clip_grad_norm_(ae.parameters(), train_params.clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), train_params.clip)
         optim.step()
 
         # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
@@ -456,8 +455,8 @@ def main(rank, world_size, config, args):
 
             # cross id generation
             if config.progress.cross_id and rank == 0:
-                xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
-                ae.train()
+                xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
+                model.train()
 
         save_checkpoints = False
         if iternum < 10_000:
@@ -470,8 +469,8 @@ def main(rank, world_size, config, args):
 
         if save_checkpoints:
             logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
-            torch.save(ae.state_dict(), "{}/aeparams.pt".format(outpath))
-            torch.save(ae.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+            torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
+            torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
 
         del cudadata
 
@@ -551,8 +550,6 @@ def main(rank, world_size, config, args):
         iternum += 1
 
     # cleanup
-    # writer.finalize()
-
     cleanup()
 
 
