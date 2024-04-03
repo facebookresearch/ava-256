@@ -3,6 +3,7 @@ Dataset download
 """
 
 import argparse
+import json
 import logging
 import pickle
 import urllib.request
@@ -25,7 +26,7 @@ BPATH = "https://fb-baas-f32eacb9-8abb-11eb-b2b8-4857dd089e15.s3.amazonaws.com/a
 ASSETS: Dict[str, List[str]] = OrderedDict(
     {
         "all": [],  # This just means we download all assets
-        "camera_calibration": ["camera_calibration.pkl"],
+        "camera_calibration": ["camera_calibration.json"],
         "frame_list": ["frame_list.csv"],
         "head_pose": ["head_pose/head_pose.zip"],
         "image": ["image/cam{camera}.zip"],
@@ -74,11 +75,16 @@ def load_captures(captures_path: Union[str, Path]) -> List[MugsyCapture]:
     return captures
 
 
-def get_camera_list(capture: MugsyCapture) -> List[str]:
-    url = BPATH + capture.folder_name() + "/decoder/" + ASSETS["camera_calibration"][0]
-    with urllib.request.urlopen(url) as response:
-        cameras_dict = pickle.load(response)
-    return sorted(list(cameras_dict.keys()))
+def get_camera_list(bpath: str, capture: MugsyCapture) -> List[str]:
+    url = bpath + f"{capture.folder_name()}" + "/decoder/" + ASSETS["camera_calibration"][0]
+    try:
+        with urllib.request.urlopen(url) as response:
+            cameras_dict = json.load(response)
+    except HTTPError as e:
+        logging.error("HTTP error occurred reaching %s: %s", url, e)
+
+    camera_list = [x["cameraId"] for x in cameras_dict["KRT"]]
+    return sorted(camera_list)
 
 
 # def download_link(from_url: str, to_path: str) -> None:
@@ -99,9 +105,11 @@ def download_link(from_url_and_to_path: Tuple[int, int, str, str]) -> None:
     try:
         urllib.request.urlretrieve(from_url, to_path)
     except HTTPError as e:
-        logging.error("Skipping! HTTP error occurred: %s", e)
+        logging.error("HTTP error occurred reaching %s: %s", from_url, e)
+        raise e
     except URLError as e:
-        logging.error("Skipping! URL error occurred: %s", e)
+        logging.error("URL error occurred reaching %s: %s", from_url, e)
+        raise e
 
 
 def download_links(links_and_paths: List[Tuple[int, int, str, str]]) -> None:
@@ -112,18 +120,18 @@ def download_links(links_and_paths: List[Tuple[int, int, str, str]]) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Download the ava-256 dataset")
-    parser.add_argument("--output-dir", "-o", type=str, help=f"Directory to write the ")
-    parser.add_argument("--captures-file", type=str, default="16_ids.csv", help="CSV file with captures to download")
+    parser.add_argument("--output-dir", "-o", type=str, help=f"Directory to write the dataset to", required=True)
+    parser.add_argument("--captures-file", type=str, default="32_ids.csv", help="CSV file with captures to download")
     parser.add_argument(
         "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
+    parser.add_argument("--size", "-s", type=str, default="4TB", choices=["4TB", "8TB", "16TB", "32TB"])
     # TODO(julieta) let people pass a single sid
     # TODO(julieta) check the hash of the remote files and compare with local files
     args = parser.parse_args()
 
-    # TODO(julieta) specify 4TB, 8TB, 16TB or 32TB version
     # TODO(julieta) check version match, if mismatch, then delete/download new data
 
     # Check assets flag
@@ -159,10 +167,11 @@ def main():
 
     camera_lists_dict = dict()
     links_and_paths: List[Tuple] = []
+    dataset_path = BPATH + f"{args.size}/"
 
     # TODO(julieta) check that these are valid captures, sid mcd and mct are there
     for capture in captures:
-        capture_path = f"{capture.mcd}--{capture.mct}--{capture.sid}"
+        capture_path = capture.folder_name()
         logging.info("Working on capture %s", capture_path)
 
         for assets, asset_paths in args.assets.items():
@@ -171,21 +180,22 @@ def main():
 
                 # Make sure we have the list of cameras for this capture
                 if capture not in camera_lists_dict:
-                    camera_list = get_camera_list(capture)
+                    camera_list = get_camera_list(dataset_path, capture)
                     camera_lists_dict[capture] = camera_list
 
+                    logging.info(
+                        "Found %s cameras for %s: %s",
+                        len(camera_list),
+                        capture,
+                        camera_list,
+                    )
+
                 camera_list = camera_lists_dict[capture]
-                logging.info(
-                    "Found %s cameras for %s: %s",
-                    len(camera_list),
-                    capture,
-                    camera_list,
-                )
 
                 # Generate download links for all the cameras
                 for camera in camera_list:
                     asset_path = asset_paths[0].format(camera=camera)
-                    from_url = BPATH + capture_path + "/decoder/" + asset_path
+                    from_url = dataset_path + capture_path + "/decoder/" + asset_path
                     to_path = output_dir / capture_path / "decoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 
@@ -193,7 +203,7 @@ def main():
 
                 # Generate donwload links for all the assets
                 for asset_path in asset_paths:
-                    from_url = BPATH + capture_path + "/decoder/" + asset_path
+                    from_url = dataset_path + capture_path + "/decoder/" + asset_path
                     to_path = output_dir / capture_path / "decoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 

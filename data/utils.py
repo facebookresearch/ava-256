@@ -1,18 +1,16 @@
 import io
+import logging
 import os
 from pathlib import Path
 from typing import Tuple
-from zipp import Path as ZipPath
 from zipfile import ZipFile
 
 import einops
 import numpy as np
 import pandas as pd
-
 from PIL import Image
 from plyfile import PlyData
-
-import logging
+from zipp import Path as ZipPath
 
 
 class MugsyCapture:
@@ -70,7 +68,7 @@ def get_framelist_neuttex_and_neutvert(
                 logging.info(f"{verts_path} does not exist")
                 verts = None
 
-            avgtex_path = ZipPath(avgtex_zip, at=f"{int(neut_frame):06d}.avif")
+            avgtex_path = ZipPath(avgtex_zip, at=f"color/{int(neut_frame):06d}.avif")
             if avgtex_path.exists():
                 img_bytes = avgtex_path.read_bytes()
                 img = Image.open(io.BytesIO(img_bytes))

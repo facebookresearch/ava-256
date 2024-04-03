@@ -1,3 +1,4 @@
+import json
 import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
@@ -124,38 +125,6 @@ def load_checkpoint(ae, filename):
     return ae
 
 
-def load_krt(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
-    """Load a KRT file containing camera parameters
-    Args:
-        path: File path that contains the KRT information
-    Returns:
-        A dictionary with
-            'intrin'
-            'dist'
-            'extrin'
-    """
-    cameras = {}
-
-    with open(path, "r") as f:
-        while True:
-            name = f.readline()
-            if name == "":
-                break
-
-            intrin = [[float(x) for x in f.readline().split()] for i in range(3)]
-            dist = [float(x) for x in f.readline().split()]
-            extrin = [[float(x) for x in f.readline().split()] for i in range(3)]
-            f.readline()
-
-            cameras[name[:-1]] = {
-                "intrin": np.array(intrin),
-                "dist": np.array(dist),
-                "extrin": np.array(extrin),
-            }
-
-    return cameras
-
-
 def load_camera_calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.ndarray]]:
     """Load a KRT file containing camera parameters
     Args:
@@ -167,8 +136,27 @@ def load_camera_calibration(path: Union[str, Path]) -> Dict[str, Dict[str, np.nd
             'extrin'
     """
 
-    with open(path, "rb") as f:
-        cameras = pickle.load(f)
+    with open(path, "r") as f:
+        camera_list = json.load(f)["KRT"]
+
+    cameras = {}
+
+    for item in camera_list:
+        camera_name = item["cameraId"]
+
+        RT = np.array(item["T"])
+        RT = RT[:4, :3]
+        RT = RT.T
+        out = {
+            "intrin": np.array(item["K"]).T,
+            "extrin": RT,
+            "dist": np.array(item["distortion"] + [0.0]),
+            "model": "radial-tangential",
+            "height": 4096,
+            "width": 2668,
+        }
+
+        cameras[camera_name] = out
 
     return cameras
 

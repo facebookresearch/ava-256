@@ -9,22 +9,22 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union
-from zipp import Path as ZipPath
 
 import einops
 import numpy as np
 import pandas as pd
 import pillow_avif
+import torch.utils.data
+from PIL import Image
 
 # import pytorch3d as p3d
 from plyfile import PlyData
-import torch.utils.data
-from PIL import Image
 
 # from pytorch3d.io import IO
 from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
+from zipp import Path as ZipPath
 
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert, getitem
 from utils import load_camera_calibration
@@ -220,7 +220,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
         assert self.dir.exists(), f"Dataset directory {self.dir} does not seem to exist"
 
         # Load krt dictionaries
-        krt_file = self.dir / "camera_calibration.pkl"
+        krt_file = self.dir / "camera_calibration.json"
         krt_dicts = load_camera_calibration(krt_file)
 
         self.cameras = list(krt_dicts.keys())
@@ -280,15 +280,15 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             verts = np.array([list(element) for element in verts])
 
             # Average texture
-            path = ZipPath(self.dir / "uv_image" / "color.zip", f"{int(frame_id):06d}.avif")
+            path = ZipPath(self.dir / "uv_image" / "color.zip", f"color/{int(frame_id):06d}.avif")
             avgtex_bytes = path.read_bytes()
             avgtex = np.asarray(Image.open(io.BytesIO(avgtex_bytes)))
             avgtex = einops.rearrange(avgtex, "h w c -> c h w").astype(np.float32)
 
             # Head pose (global transform of the person's head)
-            path = ZipPath(self.dir / "head_pose" / "head_pose.zip", f"{int(frame_id):06d}.npy")
+            path = ZipPath(self.dir / "head_pose" / "head_pose.zip", f"{int(frame_id):06d}.txt")
             headpoose_bytes = path.read_bytes()
-            headpose = np.load(io.BytesIO(headpoose_bytes))
+            headpose = np.loadtxt(io.BytesIO(headpoose_bytes), dtype=np.float32)
 
             if any(i is None for i in (img, verts, avgtex, headpose)):
                 raise ValueError(f"Some of fetched data is None for {frame_id}-{camera_id}")

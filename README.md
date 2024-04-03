@@ -23,6 +23,22 @@ cd extensions/utils
 make
 ```
 
+## Downloading the data
+We provide a handy multithreaded script to download the dataset from AWS:
+
+```bash
+python download.py ava256/ -n 1 -j 1
+```
+Will download a single capture to a new folder, `ava256/`, using a single thread.
+You may increase `n` to download more captures, and `-j` to increase the number of threads.
+
+Run
+```
+python download.py --help
+```
+to see more download options.
+
+
 ## Tests
 You can run tests with `python -m pytest tests/`
 
