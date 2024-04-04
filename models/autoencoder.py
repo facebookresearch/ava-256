@@ -51,6 +51,8 @@ class Autoencoder(nn.Module):
         verts: torch.Tensor,
         neut_avgtex: torch.Tensor,
         neut_verts: torch.Tensor,
+        target_neut_avgtex: torch.Tensor,
+        target_neut_verts: torch.Tensor,
         # Select pixels to evalaute ray marching on
         pixelcoords: torch.Tensor,
         # Indexing for background/color modeling
@@ -101,7 +103,7 @@ class Autoencoder(nn.Module):
 
         # Return {z_tex, b_tex, z_geo, b_geo}
         # Step 0. Get identity encoding
-        id_cond = self.id_encoder(neut_verts, neut_avgtex)
+        id_cond = self.id_encoder(target_neut_verts, target_neut_avgtex)
 
         # Step 1. Get expression encoding
         expr_code = self.expr_encoder(

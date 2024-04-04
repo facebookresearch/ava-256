@@ -26,7 +26,7 @@ train:
 
 progress:
   output_path: "run/" # output path where the progress is saved
-  cross_id: False
+  cross_id: True
   cross_id_n_subjects: 6
 
   tensorboard:
