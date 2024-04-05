@@ -361,199 +361,200 @@ def main(rank, world_size, config, args):
     driver_dataiter = iter(driver_dataloader)
 
     iternum = 0
-    for data in dataloader:
-        if data is None:
-            continue
+    for _ in range(num_epochs):
+        for data in dataloader:
+            if data is None:
+                continue
 
-        iter_start_time = time.time()
-        cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
+            iter_start_time = time.time()
+            cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
 
-        # TODO(julieta) control these by cli/config arguments
-        running_avg_scale = False
-        gt_geo = None
-        residuals_weight = 1.0
-        if iternum < 100:
-            running_avg_scale = True
-            gt_geo = cudadata["verts"]
-            residuals_weight = 0.0
+            # TODO(julieta) control these by cli/config arguments
+            running_avg_scale = False
+            gt_geo = None
+            residuals_weight = 1.0
+            if iternum < 100:
+                running_avg_scale = True
+                gt_geo = cudadata["verts"]
+                residuals_weight = 0.0
 
-        output = model(
-            cudadata["camrot"],
-            cudadata["campos"],
-            cudadata["focal"],
-            cudadata["princpt"],
-            cudadata["modelmatrix"],
-            cudadata["avgtex"],
-            cudadata["verts"],
-            cudadata["neut_avgtex"],
-            cudadata["neut_verts"],
-            cudadata["neut_avgtex"],
-            cudadata["neut_verts"],
-            cudadata["pixelcoords"],
-            cudadata["idindex"],
-            cudadata["camindex"],
-            running_avg_scale=running_avg_scale,
-            # These control the behaviour of the forward pass, and make the optimization easier/harder and more/less stable
-            gt_geo=gt_geo,
-            residuals_weight=residuals_weight,
-            output_set=output_set,
-        )
+            output = model(
+                cudadata["camrot"],
+                cudadata["campos"],
+                cudadata["focal"],
+                cudadata["princpt"],
+                cudadata["modelmatrix"],
+                cudadata["avgtex"],
+                cudadata["verts"],
+                cudadata["neut_avgtex"],
+                cudadata["neut_verts"],
+                cudadata["neut_avgtex"],
+                cudadata["neut_verts"],
+                cudadata["pixelcoords"],
+                cudadata["idindex"],
+                cudadata["camindex"],
+                running_avg_scale=running_avg_scale,
+                # These control the behaviour of the forward pass, and make the optimization easier/harder and more/less stable
+                gt_geo=gt_geo,
+                residuals_weight=residuals_weight,
+                output_set=output_set,
+            )
 
-        # TODO(julieta) make an enum for these losses
-        losses: Dict[str, torch.Tensor] = {}
+            # TODO(julieta) make an enum for these losses
+            losses: Dict[str, torch.Tensor] = {}
 
-        if "irgbl1" in loss_weights:
-            # NOTE(julieta) both are unnormalized already
-            losses["irgbl1"] = mean_ell_1(output["irgbrec"], cudadata["image"])
+            if "irgbl1" in loss_weights:
+                # NOTE(julieta) both are unnormalized already
+                losses["irgbl1"] = mean_ell_1(output["irgbrec"], cudadata["image"])
 
-        if "vertl1" in loss_weights:
-            losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
+            if "vertl1" in loss_weights:
+                losses["vertl1"] = mean_ell_1(output["verts"], cudadata["verts"] * vertstd + vertmean)
 
-        if "primvolsum" in loss_weights:
-            primscale = output["primscale"]
-            losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
+            if "primvolsum" in loss_weights:
+                primscale = output["primscale"]
+                losses["primvolsum"] = torch.sum(torch.prod(1.0 / primscale, dim=-1), dim=-1)
 
-        if "kldiv" in loss_weights:
-            losses["kldiv"] = kl_loss_stable(output["expr_mu"], output["expr_logstd"])
+            if "kldiv" in loss_weights:
+                losses["kldiv"] = kl_loss_stable(output["expr_mu"], output["expr_logstd"])
 
-        if not losses:
-            raise ValueError("No losses were computed. We can't train like that!")
+            if not losses:
+                raise ValueError("No losses were computed. We can't train like that!")
 
-        # compute final loss
-        loss = sum(
-            [
-                loss_weights[k]
-                * (torch.sum(v[0]) / torch.sum(v[1]).clamp(min=1e-6) if isinstance(v, tuple) else torch.mean(v))
-                for k, v in losses.items()
-            ]
-        )
-        optim.zero_grad()
-        loss.backward()
+            # compute final loss
+            loss = sum(
+                [
+                    loss_weights[k]
+                    * (torch.sum(v[0]) / torch.sum(v[1]).clamp(min=1e-6) if isinstance(v, tuple) else torch.mean(v))
+                    for k, v in losses.items()
+                ]
+            )
+            optim.zero_grad()
+            loss.backward()
 
-        params = [p for pg in optim.param_groups for p in pg["params"]]
+            params = [p for pg in optim.param_groups for p in pg["params"]]
 
-        for p in params:
-            if hasattr(p, "grad") and p.grad is not None:
-                p.grad.data[torch.isnan(p.grad.data)] = 0
-                p.grad.data[torch.isinf(p.grad.data)] = 0
+            for p in params:
+                if hasattr(p, "grad") and p.grad is not None:
+                    p.grad.data[torch.isnan(p.grad.data)] = 0
+                    p.grad.data[torch.isinf(p.grad.data)] = 0
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), train_params.clip)
-        optim.step()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), train_params.clip)
+            optim.step()
 
-        # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
-        # and an explicit one to check for loss explosion
-        iter_total_time = time.time() - iter_start_time
+            # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
+            # and an explicit one to check for loss explosion
+            iter_total_time = time.time() - iter_start_time
 
-        # print progress
-        if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
-            renderImages = []
-            del output["verts"]
-            for b in range(cudadata["camrot"].shape[0]):
-                gt = cudadata["image"][b].detach().cpu().numpy()
-                gt = einops.rearrange(gt, "c h w -> h w c")
+            # print progress
+            if (iternum < 10000 and iternum % 100 == 0) or iternum % 1000 == 0:
+                renderImages = []
+                del output["verts"]
+                for b in range(cudadata["camrot"].shape[0]):
+                    gt = cudadata["image"][b].detach().cpu().numpy()
+                    gt = einops.rearrange(gt, "c h w -> h w c")
 
-                rgb_orig = output["irgbrec"][b].detach().cpu().numpy()
-                rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
-                renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
+                    rgb_orig = output["irgbrec"][b].detach().cpu().numpy()
+                    rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
+                    renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
 
-            if rank == 0:
-                imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
+                if rank == 0:
+                    imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
 
-            # cross id generation
-            if config.progress.cross_id and rank == 0:
-                xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
-                model.train()
+                # cross id generation
+                if config.progress.cross_id and rank == 0:
+                    xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
+                    model.train()
 
-        save_checkpoints = False
-        if iternum < 10_000:
-            # to account for early loss explosions
-            if iternum % 2_000 == 0:
-                save_checkpoints = True
-        else:
-            if iternum % 20_000 == 0:
-                save_checkpoints = True
+            save_checkpoints = False
+            if iternum < 10_000:
+                # to account for early loss explosions
+                if iternum % 2_000 == 0:
+                    save_checkpoints = True
+            else:
+                if iternum % 20_000 == 0:
+                    save_checkpoints = True
 
-        if save_checkpoints:
-            logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
-            torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
-            torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+            if save_checkpoints:
+                logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
+                torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
+                torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
 
-        del cudadata
+            del cudadata
 
-        if not args.nodisplayloss:
-            logging.info(
-                "Rank {} Iteration {} loss = {:.4f}, ".format(rank, iternum, float(loss.item()))
-                + ", ".join(
-                    [
-                        "{} = {:.4f}".format(
-                            k,
-                            float(
-                                torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
-                                if isinstance(v, tuple)
-                                else torch.mean(v)
-                            ),
-                        )
-                        for k, v in losses.items()
-                    ]
+            if not args.nodisplayloss:
+                logging.info(
+                    "Rank {} Iteration {} loss = {:.4f}, ".format(rank, iternum, float(loss.item()))
+                    + ", ".join(
+                        [
+                            "{} = {:.4f}".format(
+                                k,
+                                float(
+                                    torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
+                                    if isinstance(v, tuple)
+                                    else torch.mean(v)
+                                ),
+                            )
+                            for k, v in losses.items()
+                        ]
+                    )
+                    + f" time: {iter_total_time:.3f} s"
                 )
-                + f" time: {iter_total_time:.3f} s"
-            )
 
-        # Tensorboard Logging
-        if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
-            tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
+            # Tensorboard Logging
+            if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
+                tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
 
-            tb_loss_stats = {}
-            for k, v in losses.items():
-                if v.ndim == 0:
-                    tb_loss_stats[k] = v
-                else:
-                    tb_loss_stats[k] = torch.sum(v)
+                tb_loss_stats = {}
+                for k, v in losses.items():
+                    if v.ndim == 0:
+                        tb_loss_stats[k] = v
+                    else:
+                        tb_loss_stats[k] = torch.sum(v)
 
-            for k, v in losses.items():
-                if v.ndim == 0:
-                    tensorboard_logger.add_scalar("loss/" + k, v, iternum)
-                else:
-                    tensorboard_logger.add_scalar("loss/" + k, torch.sum(v), iternum)
+                for k, v in losses.items():
+                    if v.ndim == 0:
+                        tensorboard_logger.add_scalar("loss/" + k, v, iternum)
+                    else:
+                        tensorboard_logger.add_scalar("loss/" + k, torch.sum(v), iternum)
 
-            # try:
-            #     tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
-            # except:
-            #     raise ValueError("Tensorboard cannot log images because it is None.")
-        maxiter = train_params.maxiter  # that ought to be enough for anyone
+                # try:
+                #     tensorboard_logger.add_image("progress", einops.rearrange(imgout, 'h w c -> c h w'), iternum)
+                # except:
+                #     raise ValueError("Tensorboard cannot log images because it is None.")
+            maxiter = train_params.maxiter  # that ought to be enough for anyone
 
-        if iternum >= maxiter:
-            logging.info(
-                f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} max allowed iter {maxiter}"
-            )
-            lend = time.time()
-            totaltime = lend - lstart
-            times = {"totaltime": totaltime, "maxiter": iternum}
-            np.save(f"{outpath}/timesinfo_r{rank}", times, allow_pickle=True)
-
-            logging.info(
-                "Rank {} Iteration {} loss = {:.5f}, ".format(rank, iternum, float(loss.item()))
-                + ", ".join(
-                    [
-                        "{} = {:.5f}".format(
-                            k,
-                            float(
-                                torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
-                                if isinstance(v, tuple)
-                                else torch.mean(v)
-                            ),
-                        )
-                        for k, v in losses.items()
-                    ]
+            if iternum >= maxiter:
+                logging.info(
+                    f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} max allowed iter {maxiter}"
                 )
-            )
+                lend = time.time()
+                totaltime = lend - lstart
+                times = {"totaltime": totaltime, "maxiter": iternum}
+                np.save(f"{outpath}/timesinfo_r{rank}", times, allow_pickle=True)
 
-            break
+                logging.info(
+                    "Rank {} Iteration {} loss = {:.5f}, ".format(rank, iternum, float(loss.item()))
+                    + ", ".join(
+                        [
+                            "{} = {:.5f}".format(
+                                k,
+                                float(
+                                    torch.sum(v[0]) / torch.sum(v[1].clamp(min=1e-6))
+                                    if isinstance(v, tuple)
+                                    else torch.mean(v)
+                                ),
+                            )
+                            for k, v in losses.items()
+                        ]
+                    )
+                )
 
-        if iternum < train_params.lr_scheduler_iter + 1:
-            scheduler.step()
+                break
 
-        iternum += 1
+            if iternum < train_params.lr_scheduler_iter + 1:
+                scheduler.step()
+
+            iternum += 1
 
     # cleanup
     cleanup()
