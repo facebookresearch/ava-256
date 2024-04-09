@@ -6,36 +6,45 @@ import numpy as np
 import time
 import einops
 from PIL import Image
+import yaml
+from fvcore.common.config import CfgNode as CN
 
-from data.mini_ava_dataset import MultiCaptureDataset as MiniAvaMultiCaptureDataset
-from data.mini_ava_dataset import SingleCaptureDataset as MiniAvaSingleCaptureDataset
-from data.mugsy_dataset import none_collate_fn
-from data.mugsy_dataset import MugsyCapture
-from utils import load_checkpoint, tocuda, get_autoencoder, render_img
+from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
+from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
+from data.ava_dataset import none_collate_fn
+from data.utils import MugsyCapture
+from utils import load_checkpoint, tocuda, get_autoencoder, render_img, train_csv_loader
+from tqdm import tqdm
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")
-    parser.add_argument("--base-dir", default="/home/ekim2/Storage/MetaProject/datasets/AVA_dataset/", help="base directory for data import")
-    parser.add_argument("--downsample", type=int, default=4, help="image downsampling factor at data loader")
     parser.add_argument("--checkpoint", type=str, default="run/aeparams.pt", help="checkpoint location")
     parser.add_argument("--output-dir", type=str, default="viz/", help="output image directory")
-    parser.add_argument("--config", default="config.yaml", type=str, help="config yaml file")
+    parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
     
     # Cross ID visualization configuration
     parser.add_argument("--driver-id", type=str, default="20230324--0820--AEY864", help="id of the driver avatar")
     parser.add_argument("--driven-id", type=str, default="20230831--0814--ADL311", help="id of the driven avatar")
     parser.add_argument("--camera-id", type=str, default="401031", help="render camera id")
     parser.add_argument("--segment-id", type=str, default="EXP_cheek001", help="segment to render; render all available frames if None")
+    parser.add_argument("--opts", default=[], type=str, nargs="+")
     args = parser.parse_args()
+
+    with open(args.config, "r") as file:
+        config = CN(yaml.load(file, Loader=yaml.UnsafeLoader))
+
+    config.merge_from_list(args.opts)
+
+    train_params = config.train
     
     output_dir = args.output_dir + '/' + args.driver_id + "_" + args.driven_id + "+" + args.segment_id
     
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     # Train dataset mean/std texture and vertex for normalization
-    train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
-    dataset = MiniAvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
+    train_captures, train_dirs = train_csv_loader(train_params.base_dir, train_params.data_csv, train_params.nids)
+    dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
     
     batchsize = 1
     numworkers = 1
@@ -52,7 +61,6 @@ if __name__ == "__main__":
     # Get Autoencoder
     assetpath = pathlib.Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=assetpath)
-    
 
     # Load from checkpoint
     ae = load_checkpoint(ae, args.checkpoint).cuda()
@@ -62,13 +70,13 @@ if __name__ == "__main__":
 
     # Driver capture dataloader
     driver_capture = MugsyCapture(mcd=args.driver_id.split("--")[0], mct=args.driver_id.split("--")[1], sid=args.driver_id.split("--")[2])
-    driver_dir = f"{args.base_dir}/{args.driver_id}/decoder"
-    driver_dataset = MiniAvaSingleCaptureDataset(driver_capture, driver_dir, downsample=args.downsample)
+    driver_dir = f"{train_params.base_dir}/{args.driver_id}/decoder"
+    driver_dataset = AvaSingleCaptureDataset(driver_capture, driver_dir, downsample=train_params.downsample)
     
     # Driven capture dataloader
     driven_capture = MugsyCapture(mcd=args.driven_id.split("--")[0], mct=args.driven_id.split("--")[1], sid=args.driven_id.split("--")[2])
-    driven_dir = f"{args.base_dir}/{args.driven_id}/decoder"
-    driven_dataset = MiniAvaSingleCaptureDataset(driven_capture, driven_dir, downsample=args.downsample)
+    driven_dir = f"{train_params.base_dir}/{args.driven_id}/decoder"
+    driven_dataset = AvaSingleCaptureDataset(driven_capture, driven_dir, downsample=train_params.downsample)
     
     texmean = dataset.texmean
     vertmean = dataset.vertmean
@@ -84,11 +92,11 @@ if __name__ == "__main__":
         dataset.texstd = texstd
         dataset.vertmean = vertmean
         dataset.vertstd = vertstd
-        
+    
     # select only desired segments
     if args.segment_id:
         driver_dataset.framelist = driver_dataset.framelist.loc[driver_dataset.framelist["seg_id"] == args.segment_id]
-    if driver_dataset.framelist == []:
+    if driver_dataset.framelist.values.tolist() == []:
         raise ValueError(f"Asked to render Segment {args.segment_id}, but there are no frames with that Segment in {driver_capture}")
 
     # select only desired cameras
@@ -126,7 +134,7 @@ if __name__ == "__main__":
     
     iter = 0
     
-    for driver in driver_loader:
+    for driver in tqdm(driver_loader, desc="Rendering Frames"):
         # Skip if any of the frames is empty
         if driver is None:
             continue
@@ -151,6 +159,8 @@ if __name__ == "__main__":
                 # normalized using the train data stats and driver data stats
                 cudadriver["neut_avgtex"],
                 cudadriver["neut_verts"], 
+                cudadriver["neut_avgtex"],
+                cudadriver["neut_verts"], 
                 cudadriver["pixelcoords"],
                 cudadriver["idindex"],
                 cudadriver["camindex"],
@@ -170,6 +180,8 @@ if __name__ == "__main__":
                 cudadriver["avgtex"],
                 cudadriver["verts"],
                 # normalized using the train data stats and driven data stats
+                cudadriver["neut_avgtex"],
+                cudadriver["neut_verts"], 
                 cudadriven["neut_avgtex"],  
                 cudadriven["neut_verts"], 
                 cudadriver["pixelcoords"],

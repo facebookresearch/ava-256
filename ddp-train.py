@@ -361,7 +361,8 @@ def main(rank, world_size, config, args):
     driver_dataiter = iter(driver_dataloader)
 
     iternum = 0
-    for _ in range(num_epochs):
+
+    for _ in range(train_params.num_epochs):
         for data in dataloader:
             if data is None:
                 continue
