@@ -17,10 +17,8 @@ import pillow_avif
 import torch.utils.data
 from PIL import Image
 
-# import pytorch3d as p3d
 from plyfile import PlyData
 
-# from pytorch3d.io import IO
 from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm

@@ -85,23 +85,6 @@ def gen_optimizer(
     return params, opt
 
 
-def import_module(file_path, module_name):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def check_quorum(token, allmembers):
-    size = dist.get_world_size()
-    dist.all_reduce(token, op=dist.ReduceOp.SUM, group=allmembers)
-    ResetFlag = False
-    if token[0] != size:
-        ResetFlag = True
-        # logging.warning(f"at least one of the ranks is seeing unstable loss value(s)")
-    return ResetFlag
-
-
 def setup(rank, world_size, masterport):
     logging.info(f"Rank is: {rank}")
     torch.cuda.set_device(rank)
@@ -271,47 +254,16 @@ def main(rank, world_size, config, args):
 
     current_file = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file)
-    outpath = os.environ.get(
-        "RSC_RUN_DIR", os.path.join(current_dir, config.progress.output_path)
-    )  # RSC_EXP_RUN_BASE_DIR/SLURM_NODEID/SLURM_LOCALID
+    outpath = os.path.join(current_dir, config.progress.output_path)
     os.makedirs(f"{outpath}/x-id", exist_ok=True)
-    # os.makedirs(outpath, exist_ok=True)
 
     logpath = "{}/log-r{}.txt".format(outpath, rank)
-
-    # if path exists append automatically
-    logging.info(f"Python {sys.version}")
-    logging.info(f"PyTorch {torch.__version__}")
-    logging.info(" ".join(sys.argv))
-    logging.info(f"Output path: {outpath}")
-
-    logging.info(" ==================================================== ")
-    logging.info(" rank: {}, args: {}".format(rank, args))
-    v_devices = os.getenv("CUDA_VISIBLE_DEVICES", "NOTFOUND")
-    logging.info(" ==================================================== ")
-    logging.info(
-        " At rank {} DEVICE COUNT : {} -- CUDA VISIBLE DEVICES {}".format(rank, torch.cuda.device_count(), v_devices)
-    )
-    logging.info(" ==================================================== ")
 
     tensorboard_logger = None
     if config.progress.tensorboard.logdir is not None and rank == 0:
         tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
-
-    logging.info("@@@@@@@@@@@@@@@ JOB CONFIG:")
-    logging.info(args)
-    logging.info("@@@@@@@@@@@@@@@ END OF JOB CONFIG \n")
-
-    logging.info("@@@@@@@@@@@@@@@ OS ENV VARIABLES (from sbatch):")
-    for k, v in os.environ.items():
-        logging.info(f"{k}:{v}")
-    logging.info("@@@@@@@@@@@@@@@ END OF OS ENV VARIABLES :")
-
-    # if not args.noprogress:
-    #         writer = progressprof.get_writer()
-    #         logging.debug("Writer instantiated ({:.2f} s)".format(time.time() - starttime))
 
     dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(rank, world_size, train_params)
 

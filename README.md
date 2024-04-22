@@ -75,15 +75,12 @@ TODO
 
 ## TODOs before releasing
 
+* Select 256 ids
 * Train/val/test partitions
 
 ### Devex
 * See TODOs in download script
 * Pytorch lightning for multi-GPU?
-
-### Assets and asset provenance
-* I'm Using CARE's (Chenglei's?) `load_obj` function, because all the darn off the shelf libraries that can load obj
-files have issues, see if we can switch to something else
 
 ### Models
 
@@ -94,8 +91,3 @@ files have issues, see if we can switch to something else
 
 * Maybe put codebase under `src/` folder?
 * Organize tests into subfolders (need to figure out why imports break then?)
-
-## Dataset Issues
-
-* Some subjects put their hair down, and this changes their appearance drastically. (20230831—-0814—-ADL311) Possible solution: Separate them as different IDs
-* Some subjects have hands appear during capture (ie., 20230831—-0814—-ADL311 pulls hair down)
