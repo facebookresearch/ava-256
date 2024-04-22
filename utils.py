@@ -120,6 +120,7 @@ def get_autoencoder(dataset, assetpath: str):
 
 
 def load_checkpoint(ae, filename):
+    ae = torch.nn.DataParallel(ae)
     checkpoint = torch.load(filename)
     ae.load_state_dict(checkpoint, strict=True)
     return ae

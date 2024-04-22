@@ -18,7 +18,7 @@ ava256/
 viz/
 *log/
 */**/__pycache__
-viz/
+checkpoints/
 
 # Extensions
 extensions-mvp/*/build/**

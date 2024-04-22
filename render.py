@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")
-    parser.add_argument("--checkpoint", type=str, default="run/aeparams.pt", help="checkpoint location")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/aeparams.pt", help="checkpoint location")
     parser.add_argument("--output-dir", type=str, default="viz/", help="output image directory")
     parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
     
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("--driver-id", type=str, default="20230324--0820--AEY864", help="id of the driver avatar")
     parser.add_argument("--driven-id", type=str, default="20230831--0814--ADL311", help="id of the driven avatar")
     parser.add_argument("--camera-id", type=str, default="401031", help="render camera id")
-    parser.add_argument("--segment-id", type=str, default="EXP_cheek001", help="segment to render; render all available frames if None")
+    parser.add_argument("--segment-id", type=str, default="EXP_eyes_blink_light_medium_hard_wink", help="segment to render; render all available frames if None")
     parser.add_argument("--opts", default=[], type=str, nargs="+")
     args = parser.parse_args()
 
@@ -149,21 +149,20 @@ if __name__ == "__main__":
 
         # Generate image from original inputs
         output_orig = ae(
-                cudadriver["camrot"],
-                cudadriver["campos"],
-                cudadriver["focal"],
-                cudadriver["princpt"],
-                cudadriver["modelmatrix"],
-                cudadriver["avgtex"],
-                cudadriver["verts"],
-                # normalized using the train data stats and driver data stats
-                cudadriver["neut_avgtex"],
-                cudadriver["neut_verts"], 
-                cudadriver["neut_avgtex"],
-                cudadriver["neut_verts"], 
-                cudadriver["pixelcoords"],
-                cudadriver["idindex"],
-                cudadriver["camindex"],
+                camrot=cudadriver["camrot"],
+                campos=cudadriver["campos"],
+                focal=cudadriver["focal"],
+                princpt=cudadriver["princpt"],
+                modelmatrix=cudadriver["modelmatrix"],
+                avgtex=cudadriver["avgtex"],
+                verts=cudadriver["verts"],
+                neut_avgtex=cudadriver["neut_avgtex"],
+                neut_verts=cudadriver["neut_verts"],
+                target_neut_avgtex=cudadriver["neut_avgtex"],
+                target_neut_verts=cudadriver["neut_verts"],
+                pixelcoords=cudadriver["pixelcoords"],
+                idindex=cudadriver["idindex"],
+                camindex=cudadriver["camindex"],
                 running_avg_scale=running_avg_scale,
                 gt_geo=gt_geo,
                 residuals_weight=residuals_weight,
@@ -172,21 +171,21 @@ if __name__ == "__main__":
         
         # Generate image from cross id texture and vertex
         output_driven = ae(
-                cudadriver["camrot"],
-                cudadriver["campos"],
-                cudadriver["focal"],
-                cudadriver["princpt"],
-                cudadriver["modelmatrix"],
-                cudadriver["avgtex"],
-                cudadriver["verts"],
+                camrot=cudadriver["camrot"],
+                campos=cudadriver["campos"],
+                focal=cudadriver["focal"],
+                princpt=cudadriver["princpt"],
+                modelmatrix=cudadriver["modelmatrix"],
+                avgtex=cudadriver["avgtex"],
+                verts=cudadriver["verts"],
                 # normalized using the train data stats and driven data stats
-                cudadriver["neut_avgtex"],
-                cudadriver["neut_verts"], 
-                cudadriven["neut_avgtex"],  
-                cudadriven["neut_verts"], 
-                cudadriver["pixelcoords"],
-                cudadriver["idindex"],
-                cudadriver["camindex"],
+                neut_avgtex=cudadriver["neut_avgtex"],
+                neut_verts=cudadriver["neut_verts"], 
+                target_neut_avgtex=cudadriven["neut_avgtex"],  
+                target_neut_verts=cudadriven["neut_verts"], 
+                pixelcoords=cudadriver["pixelcoords"],
+                idindex=cudadriver["idindex"],
+                camindex=cudadriver["camindex"],
                 running_avg_scale=running_avg_scale,
                 gt_geo=gt_geo,
                 residuals_weight=residuals_weight,

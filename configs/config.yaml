@@ -5,9 +5,9 @@ train:
   # base_dir: "/uca/julieta/oss/release/"
   # base_dir: "/home/julietamartinez/src/oss-uca1/ava256/"
   data_csv: "32_ids.csv"
-  nids: 32 # Number of identities to select
+  nids: 4 # Number of identities to select
   devices: [0] # devices
-  checkpoint: "run/aeparams_020000.pt" # checkpoint to resume training
+  checkpoint: "checkpoints/aeparams.pt" # checkpoint to resume training
   maxiter: 10_000_000
   num_epochs: 3
   init_learning_rate: 1.0e-4
