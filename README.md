@@ -57,11 +57,7 @@ To train on RSC, you can use
   export GLOG_minloglevel=2 && \
   export NCCL_ASYNC_ERROR_HANDLING=1 && \
   export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache && \
-  python3 sbatch.py -n 1 -g 8 -t 1 -w 4 --source-dir /home/$USER/rsc/oss-uca1/ \
-  --checkpoint-root-dir /checkpoint/avatar/$USER/oss_release/ \
-  --batchsize 4 \
-  --learning-rate 1e-4 \
-  --masterport $(shuf -i 2049-65000 -n 1)'
+  python ddp-train.py config.py'
 ```
 
 ## Visualization
@@ -77,6 +73,7 @@ TODO
 
 * Select 256 ids
 * Train/val/test partitions
+* Point to pre-trained model(s)
 
 ### Devex
 * See TODOs in download script
