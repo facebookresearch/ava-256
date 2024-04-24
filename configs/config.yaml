@@ -5,17 +5,17 @@ train:
   # base_dir: "/uca/julieta/oss/release/"
   base_dir: "/uca/julieta/oss/release/4TB/"
   data_csv: "333_ids.csv"
-  nids: 8 # Number of identities to select
+  nids: 333 # Number of identities to select
   devices: [0] # devices
   # checkpoint: "checkpoints/aeparams.pt" # checkpoint to resume training
   checkpoint: ""
   maxiter: 10_000_000
   num_epochs: 1
-  init_learning_rate: 1.0e-4
+  init_learning_rate: 2.0e-4
   lr_scheduler_iter: 10000
   gamma: 1.4
   num_gpus: 8
-  downsample: 4 # image downsampling factor at data loader
+  downsample: 8 # image downsampling factor at data loader
   num_workers: 4
   batchsize: 4 # Batch size per GPU to use
   clip: 1.0 # Gradient clipping
