@@ -23,6 +23,32 @@ cd extensions/utils
 make
 ```
 
+## Dataset
+
+We provide dome and Quest Pro captures for 256 subjects.
+
+### Decoder (dome) captures
+
+These captures consist of 80 cameras each, each stored in RGB.
+
+| Dataset size  | Image resolution |  FPS  | Frames per capture | AVIF quality |
+| -------------: | ----------------: | -----: | ------------------: | -------: |
+|  4 TB  | 1024 x 667  | 7.5  |  ~ 5_000 | 63 |
+|  8 TB  | 1024 x 667  | 15.0 | ~ 10_000 | 63 |
+| 16 TB  | 2048 x 1334 | 7.5  |  ~ 5_000 | 70 |
+| 32 TB  | 2048 x 1334 | 15.0 | ~ 10_000 | 70 |
+
+The total number of images is roughly 400k - 800k per capture, depending on the dataset size.
+
+### Encoder (Quest Pro) captures
+
+These captures consist of 5 infrared cameras each
+
+| Image resolution |  FPS  | Frames per capture | AVIF quality |
+| ----------------: | -----: | ------------------: | -------: |
+| 400 x 400  | TBD  |  ~ 10_000 | TBD |
+
+
 ## Downloading the data
 We provide a handy multithreaded script to download the dataset from AWS:
 
