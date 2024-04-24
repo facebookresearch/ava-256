@@ -519,15 +519,12 @@ if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
 
-    parser.add_argument("--ablationcamera", action="store_true", help="running ablation camera experiments")
     parser.add_argument("--noprogress", action="store_true", help="don't output training progress images")
     parser.add_argument("--nostab", action="store_true", help="don't check loss stability")
     parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
     parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
-    parser.add_argument("--disableshuffle", action="store_true", help="no shuffle in airstore")
-    parser.add_argument("--shard_air", action="store_true", help="no shuffle in airstore")
 
     # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
     parser.add_argument("--idfilepath", type=str, default=None, help="file of id list for training or evaluation")
@@ -541,9 +538,14 @@ if __name__ == "__main__":
 
     config.merge_from_list(args.opts)
 
+    # Validate config
+    if config.progress.cross_id:
+        assert config.progress.cross_id_n_subjects < config.train.nids, "number of subjects for cross id must be < number of subjects in the dataset"
+
     train_params = config.train
 
     world_size = config.train.num_gpus
+
 
     if world_size > 1:
         mp.spawn(main, args=(world_size, config, args), nprocs=world_size)

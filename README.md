@@ -45,8 +45,9 @@ You can run tests with `python -m pytest tests/`
 ## Train
 To train a simple model on a standalone machine you can run
 ```bash
-python ddp-train.py config.py
+python ddp-train.py
 ```
+which will automatically load the config under `configs/config.yaml`
 
 To train on RSC, you can use
 ```bash
@@ -57,7 +58,7 @@ To train on RSC, you can use
   export GLOG_minloglevel=2 && \
   export NCCL_ASYNC_ERROR_HANDLING=1 && \
   export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache && \
-  python ddp-train.py config.py'
+  python ddp-train.py
 ```
 
 ## Visualization
