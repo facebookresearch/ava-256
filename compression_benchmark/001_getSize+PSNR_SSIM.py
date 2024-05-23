@@ -1,14 +1,16 @@
-import cv2
 import glob
-from skimage.metrics import structural_similarity as compare_ssim
-from skimage import metrics
-from PIL import Image
-import numpy
-import time
-import os
-import pillow_avif
-from pillow_heif import register_heif_opener
 import json
+import os
+import time
+
+import numpy
+import pillow_avif
+from PIL import Image
+from pillow_heif import register_heif_opener
+from skimage import metrics
+from skimage.metrics import structural_similarity as compare_ssim
+
+import cv2
 from utils import *
 
 register_heif_opener()

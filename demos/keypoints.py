@@ -1,10 +1,10 @@
+import io
+import pickle
+
+import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-import pillow_avif
-import matplotlib.pyplot as plt
-import pickle
 from zipp import Path as ZipPath
-import io
 
 
 def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savefig=False, showfig=False):

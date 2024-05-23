@@ -9,8 +9,9 @@ import einops
 import numpy as np
 import pandas as pd
 from PIL import Image
-from plyfile import PlyData
 from zipp import Path as ZipPath
+
+from plyfile import PlyData
 
 
 class MugsyCapture:

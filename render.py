@@ -1,21 +1,18 @@
-import torch
-import pathlib
 import argparse
-from typing import Dict, List, Union
-import numpy as np
-import time
+import pathlib
+from typing import Dict, Union
+
 import einops
-from PIL import Image
+import torch
 import yaml
-from fvcore.common.config import CfgNode as CN
+from tqdm import tqdm
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture
-from utils import load_checkpoint, tocuda, get_autoencoder, render_img, train_csv_loader
-from tqdm import tqdm
-
+from fvcore.common.config import CfgNode as CN
+from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")

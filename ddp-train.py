@@ -1,42 +1,34 @@
 """Train an autoencoder."""
 
 import argparse
-import hashlib as hlib
-import importlib
-import importlib.util
 import itertools
 import logging
 import os
-import pathlib
 import random
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, Union
 
 import einops
 import numpy as np
-import pandas as pd
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
-from fvcore.common.config import CfgNode as CN
-from torch.utils.tensorboard import SummaryWriter
-import torch.optim.lr_scheduler as lr_scheduler
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import none_collate_fn
-from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
+from data.utils import get_framelist_neuttex_and_neutvert
+from fvcore.common.config import CfgNode as CN
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
-from utils import load_checkpoint, get_autoencoder, render_img, train_csv_loader, tocuda
-from data.utils import get_framelist_neuttex_and_neutvert
+from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
 
 sys.dont_write_bytecode = True
 
@@ -253,8 +245,6 @@ def main(rank, world_size, config, args):
     outpath = os.path.join(current_dir, config.progress.output_path)
     os.makedirs(f"{outpath}/x-id", exist_ok=True)
 
-    logpath = "{}/log-r{}.txt".format(outpath, rank)
-
     tensorboard_logger = None
     if config.progress.tensorboard.logdir is not None and rank == 0:
         tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
@@ -264,7 +254,7 @@ def main(rank, world_size, config, args):
     dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(rank, world_size, train_params)
 
     starttime = time.time()
-    assetpath = pathlib.Path(__file__).parent / "assets"
+    assetpath = Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
 
     if train_params.checkpoint:
@@ -298,7 +288,6 @@ def main(rank, world_size, config, args):
 
     # train
     starttime = time.time()
-    prevloss = np.inf
 
     # Total experiment time
     lstart = time.time()
@@ -343,7 +332,9 @@ def main(rank, world_size, config, args):
                 cudadata["idindex"],
                 cudadata["camindex"],
                 running_avg_scale=running_avg_scale,
-                # These control the behaviour of the forward pass, and make the optimization easier/harder and more/less stable
+                # NOTE(julieta) These control the behaviour of the forward pass, and passing them makes the optimization
+                # easier. This can be tricky to get your head around, but is crucial to understand how the optimization
+                # of so many primitives manages to converge.
                 gt_geo=gt_geo,
                 residuals_weight=residuals_weight,
                 output_set=output_set,
@@ -390,8 +381,8 @@ def main(rank, world_size, config, args):
             torch.nn.utils.clip_grad_norm_(model.parameters(), train_params.clip)
             optim.step()
 
-            # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
-            # and an explicit one to check for loss explosion
+            # NOTE(julieta) We compute iter total time anyway -- no extra syncing needed, there is already an implicit
+            # sync during `backward`
             iter_total_time = time.time() - iter_start_time
 
             # print progress
@@ -407,7 +398,7 @@ def main(rank, world_size, config, args):
                     renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
 
                 if rank == 0:
-                    imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
+                    render_img(renderImages, f"{outpath}/progress_{iternum}.png")
 
                 # cross id generation
                 if config.progress.cross_id and rank == 0:
@@ -474,7 +465,7 @@ def main(rank, world_size, config, args):
 
             if iternum >= maxiter:
                 logging.info(
-                    f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} max allowed iter {maxiter}"
+                    f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} / {maxiter}"
                 )
                 lend = time.time()
                 totaltime = lend - lstart

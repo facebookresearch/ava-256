@@ -5,7 +5,6 @@ Dataset download
 import argparse
 import json
 import logging
-import pickle
 import urllib.request
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Union
 from urllib.error import HTTPError, URLError
 
-import numpy as np
 import pandas as pd
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)

@@ -1,12 +1,10 @@
+import io
+import os
+import tempfile
+
 import numpy as np
 from PIL import Image, ImageOps
-import pillow_avif
-import matplotlib.pyplot as plt
-import pickle
-import os
-import io
 from zipp import Path as ZipPath
-import tempfile
 
 
 def segmentation_demo(ava_dir, subject_id, base_dir, camera_id, frame_id):

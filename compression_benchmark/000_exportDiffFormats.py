@@ -1,13 +1,14 @@
-from PIL import Image
-import os
-import glob
-import pillow_avif
-from pillow_heif import register_heif_opener
-import time
-import json
 import argparse
-from pathlib import Path
+import glob
+import json
+import os
+import time
 from collections import defaultdict
+from pathlib import Path
+
+import pillow_avif
+from PIL import Image
+from pillow_heif import register_heif_opener
 
 from utils import *
 

@@ -1,8 +1,9 @@
-import pandas as pd
 import numpy as np
-from utils import load_krt
+import pandas as pd
 import pytest
+
 from data.ava_dataset import getitem
+from utils import load_krt
 
 
 def test_getitem_avaSingleCaptureDataset():

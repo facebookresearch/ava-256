@@ -1,15 +1,15 @@
-import numpy as np
 import io
-from PIL import Image
-import pillow_avif
-import matplotlib.pyplot as plt
-import matplotlib.collections as mcoll
 import pickle
-from zipp import Path as ZipPath
-from plyfile import PlyData
-import plyfile
-from utils import *
+
+import matplotlib.collections as mcoll
+import matplotlib.pyplot as plt
 import mpl_toolkits
+import numpy as np
+from PIL import Image
+from zipp import Path as ZipPath
+
+from plyfile import PlyData
+from utils import *
 
 
 def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savefig=False, showfig=False):

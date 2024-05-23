@@ -1,22 +1,19 @@
 import json
-import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
+from typing import Dict, List, Optional, TextIO, Tuple, Union
 
 import einops
 import numpy as np
 import pandas as pd
-import torch
 import torch as th
-from igl import point_mesh_squared_distance
 from PIL import Image
 
+from data.utils import MugsyCapture
+from igl import point_mesh_squared_distance
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
-
-from data.utils import MugsyCapture
 
 
 def closest_point(mesh, points):
@@ -371,15 +368,14 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
     }
 
 
-def render_img(listsofimages, outpath):
+def render_img(listsofimages, outpath) -> None:
     """saves image given a list of list of images
 
     Args:
         listsofimages (List[List[np.array]]): list of list of images
         outpath (str): path to save the image
-
     Returns:
-        PIL.Image: image
+        Nothing, the image is saved to outpath
     """
 
     combined_imgs = []
@@ -392,8 +388,6 @@ def render_img(listsofimages, outpath):
     rgb = np.clip(rgb, 0, 255).astype(np.uint8)
     rgb_img = Image.fromarray(rgb)
     rgb_img.save(outpath)
-
-    return rgb_img
 
 
 def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[MugsyCapture], List[Path]]:

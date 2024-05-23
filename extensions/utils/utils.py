@@ -4,13 +4,13 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import numpy as np
 import time
 
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.autograd import Function
 import torch.nn.functional as F
+from torch.autograd import Function
 
 try:
     from . import utilslib

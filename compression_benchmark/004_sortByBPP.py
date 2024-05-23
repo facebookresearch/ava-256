@@ -1,5 +1,5 @@
-import os
 import glob
+import os
 
 img_size = 1334 * 2048
 

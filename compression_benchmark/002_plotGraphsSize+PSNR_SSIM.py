@@ -1,10 +1,12 @@
+import json
+import math
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
-import json
-import os
-import math
 import sklearn.cluster
+from PIL import Image
+
 from utils import *
 
 parser = argparse.ArgumentParser()

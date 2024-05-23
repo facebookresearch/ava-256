@@ -1,7 +1,7 @@
 # Selects 100 files from the MultiFace Dataset for benchmark compression analysis.
 # Randomly selects 2 frames from 5 camera views from 10 subjects, E001_Neutral_Eyes_Open.
-import os
 import glob
+import os
 import random
 
 parser = argparse.ArgumentParser()
