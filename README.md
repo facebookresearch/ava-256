@@ -82,9 +82,9 @@ will override the `train.dataset_dir` parameter in the config file.
 
 To train on Avatar RSC, you can use
 ```bash
- ava sync oss-uca1; SCENV=ava rsc_launcher launch \
+ ava sync ava-256; SCENV=ava rsc_launcher launch \
   --projects AIRSTORE_AVATAR_RSC_DATA_PIPELINE_CRYPTO \
-  -e 'cd ~/rsc/oss-uca1 && \
+  -e 'cd ~/rsc/ava-256 && \
   source /uca/conda-envs/activate-latest && \
   export GLOG_minloglevel=2 && \
   export NCCL_ASYNC_ERROR_HANDLING=1 && \
