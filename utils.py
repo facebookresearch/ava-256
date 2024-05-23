@@ -27,8 +27,8 @@ def closest_point(mesh, points):
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
 
-def tocuda(d: Union[torch.Tensor, np.ndarray, Dict, List]) -> Union[torch.Tensor, Dict, List]:
-    if isinstance(d, torch.Tensor):
+def tocuda(d: Union[th.Tensor, np.ndarray, Dict, List]) -> Union[th.Tensor, Dict, List]:
+    if isinstance(d, th.Tensor):
         return d.to("cuda")
     elif isinstance(d, dict):
         return {k: tocuda(v) for k, v in d.items()}
@@ -116,8 +116,8 @@ def get_autoencoder(dataset, assetpath: str):
 
 
 def load_checkpoint(ae, filename):
-    ae = torch.nn.DataParallel(ae)
-    checkpoint = torch.load(filename)
+    ae = th.nn.DataParallel(ae)
+    checkpoint = th.load(filename)
     ae.load_state_dict(checkpoint, strict=True)
     return ae
 
@@ -341,8 +341,8 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
     index_img, bary_img, _ = make_closest_uv_barys(
-        torch.from_numpy(vt),
-        torch.from_numpy(vti),
+        th.from_numpy(vt),
+        th.from_numpy(vti),
         uv_shape=resolution,
         flip_uv=False,
     )
