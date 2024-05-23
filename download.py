@@ -121,7 +121,7 @@ def download_links(links_and_paths: List[Tuple[int, int, str, str]]) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Download the ava-256 dataset")
     parser.add_argument("--output-dir", "-o", type=str, help=f"Directory to write the dataset to", required=True)
-    parser.add_argument("--captures-file", type=str, default="32_ids.csv", help="CSV file with captures to download")
+    parser.add_argument("--captures-file", type=str, default="256_ids.csv", help="CSV file with captures to download")
     parser.add_argument(
         "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
