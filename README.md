@@ -89,7 +89,7 @@ To train on Avatar RSC, you can use
   export GLOG_minloglevel=2 && \
   export NCCL_ASYNC_ERROR_HANDLING=1 && \
   export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache && \
-  python ddp-train.py
+  python ddp-train.py'
 ```
 
 ## Visualization

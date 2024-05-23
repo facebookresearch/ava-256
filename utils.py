@@ -43,7 +43,6 @@ def get_renderoptions():
 
 
 def get_autoencoder(dataset, assetpath: str):
-    import torch
 
     import models.autoencoder as aemodel
     import models.bg.mlp2d as bglib
@@ -60,7 +59,7 @@ def get_autoencoder(dataset, assetpath: str):
     print("@@@ Get autoencoder ABLATION CONFIG FILE : length of data set : {}".format(len(dataset.identities)))
     print(f"dataset vertmean: {dataset.vertmean.shape}")
 
-    vertmean = torch.from_numpy(dataset.vertmean)
+    vertmean = th.from_numpy(dataset.vertmean)
     vertstd = dataset.vertstd
 
     # load per-textel triangulation indices
