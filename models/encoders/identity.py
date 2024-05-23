@@ -38,7 +38,9 @@ class IdentityEncoder(nn.Module):
         self.bias.data.zero_()
 
     def forward(
-        self, neut_verts: torch.Tensor, neut_avgtex: torch.Tensor,
+        self,
+        neut_verts: torch.Tensor,
+        neut_avgtex: torch.Tensor,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
         geo = generate_geomap(neut_verts, self.uv_tidx, self.uv_bary)
         z_geo, b_geo = self.geo(geo)

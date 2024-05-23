@@ -536,12 +536,13 @@ if __name__ == "__main__":
 
     # Validate config
     if config.progress.cross_id:
-        assert config.progress.cross_id_n_subjects < config.train.nids, "number of subjects for cross id must be < number of subjects in the dataset"
+        assert (
+            config.progress.cross_id_n_subjects < config.train.nids
+        ), "number of subjects for cross id must be < number of subjects in the dataset"
 
     train_params = config.train
 
     world_size = config.train.num_gpus
-
 
     if world_size > 1:
         mp.spawn(main, args=(world_size, config, args), nprocs=world_size)
