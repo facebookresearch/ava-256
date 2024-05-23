@@ -98,17 +98,13 @@ def cleanup():
 
 
 def prepare(rank, world_size, train_params):
-    base_dir = train_params.base_dir
-    datatype = train_params.dataset
+    base_dir = train_params.dataset_dir
     train_dirs = None
     train_captures = None
 
-    # Load
-    if datatype == "ava":
-        train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
-        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
-    else:
-        raise ValueError(f"Unsupported dataset: {datatype}")
+    # Load dataset
+    train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
+    dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
 
     starttime = time.time()
 
