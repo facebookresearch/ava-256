@@ -25,7 +25,7 @@ train:
 progress:
   output_path: "run/"                           # output path where the progress is saved
   cross_id: True                                # wheter to visualize cross-id animation during validation
-  cross_id_n_subjects: 4                        # number of subjects to visualize during cross-id training
+  cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
     logdir: "log/"                              # directory to store tensorboard outputs
