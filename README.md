@@ -84,12 +84,7 @@ To train on Avatar RSC, you can use
 ```bash
  ava sync ava-256; SCENV=ava rsc_launcher launch \
   --projects AIRSTORE_AVATAR_RSC_DATA_PIPELINE_CRYPTO \
-  -e 'cd ~/rsc/ava-256 && \
-  source /uca/conda-envs/activate-latest && \
-  export GLOG_minloglevel=2 && \
-  export NCCL_ASYNC_ERROR_HANDLING=1 && \
-  export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache && \
-  python ddp-train.py'
+  -e 'cd ~/rsc/ava-256 && sbatch sbatch.sh'
 ```
 
 ## Visualization

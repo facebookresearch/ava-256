@@ -2,7 +2,7 @@
 
 import argparse
 import itertools
-import logging
+import logging, platform
 import os
 import random
 import sys
@@ -32,11 +32,20 @@ from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_cs
 
 sys.dont_write_bytecode = True
 
+class HostnameFilter(logging.Filter):
+    hostname = platform.node()
+
+    def filter(self, record):
+        record.hostname = HostnameFilter.hostname
+        return True
+
+
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.addFilter(HostnameFilter())
+formatter = logging.Formatter("%(asctime)s %(hostname)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
@@ -77,12 +86,22 @@ def gen_optimizer(
     return params, opt
 
 
-def setup(rank, world_size, masterport):
-    logging.info(f"Rank is: {rank}")
-    torch.cuda.set_device(rank)
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = masterport
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+def setup(local_rank, world_rank, world_size, master_address: str, master_port: str):
+    # logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+    # print(       f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+
+    # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
+    # print(f"{devices=}")
+
+    if local_rank is not None:
+        torch.cuda.set_device(local_rank)
+
+    if world_rank is None:
+        world_rank = local_rank
+
+    os.environ["MASTER_ADDR"] = master_address
+    os.environ["MASTER_PORT"] = master_port
+    dist.init_process_group("nccl", rank=world_rank, world_size=world_size)
 
 
 def cleanup():
@@ -235,8 +254,11 @@ def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, o
     print(f"Cross ID viz took {time.time() - starttime}")
 
 
-def main(rank, world_size, config, args):
-    setup(rank, world_size, args.masterport)
+def main(rank, config, args):
+
+    logging.info(f"{rank=}, {args.world_size=}")
+
+    setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
 
     train_params = config.train
 
@@ -251,7 +273,7 @@ def main(rank, world_size, config, args):
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
 
-    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(rank, world_size, train_params)
+    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(args.world_rank, args.world_size, train_params)
 
     starttime = time.time()
     assetpath = Path(__file__).parent / "assets"
@@ -263,7 +285,10 @@ def main(rank, world_size, config, args):
 
     vertmean, vertstd = torch.Tensor(dataset.vertmean).to("cuda"), dataset.vertstd
 
-    model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
+    if rank is not None:
+        model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
+    else:
+        model = DDP(ae)
 
     optim_type = "adam"
     _, optim = gen_optimizer(
@@ -506,10 +531,9 @@ if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
 
-    parser.add_argument("--noprogress", action="store_true", help="don't output training progress images")
-    parser.add_argument("--nostab", action="store_true", help="don't check loss stability")
+    # Can overwrite some of these parameter to, eg, train over multiple hosts
     parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
-    parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
+    parser.add_argument("--masteraddress", type=str, default="localhost", help="master node address (hostname or ip)")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
 
@@ -533,9 +557,19 @@ if __name__ == "__main__":
 
     train_params = config.train
 
-    world_size = config.train.num_gpus
-
-    if world_size > 1:
-        mp.spawn(main, args=(world_size, config, args), nprocs=world_size)
+    # Update worldsize with number of GPUs
+    if torch.cuda.is_available():
+        ngpus_per_node = torch.cuda.device_count()
     else:
-        main(0, 1, config, args)
+        ngpus_per_node = 1
+
+    if ngpus_per_node > 1:
+        # POV: you ssh into a node and run `python train_ddp.py` directly
+        args.world_rank = None
+        args.world_size = ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+    else:
+        # POV: you run things on a slurm cluster with sbatch sbatch.sh
+        args.world_rank = int(os.getenv("SLURM_PROCID"))
+        args.world_size = int(os.getenv("SLURM_NTASKS"))
+        main(None, config, args)

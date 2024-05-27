@@ -10,7 +10,6 @@ train:
   init_learning_rate: 2.0e-4                    # learning rate
   lr_scheduler_iter: 10_000                     # iterations to schedule learning
   gamma: 1.4
-  num_gpus: 8
   downsample: 8                                 # image downsampling factor at data loader, 1 is no downsampling
   num_workers: 4                                # number of workers for each dataloader
   batchsize: 4                                  # batch size per per gpu
