@@ -458,7 +458,7 @@ def main(rank, config, args):
 
             if not args.nodisplayloss:
                 logging.info(
-                    "Rank {} Iteration {} loss = {:.4f}, ".format(args.world_rank, iternum, float(loss.item()))
+                    "Rank {:>3d} Iteration {} loss = {:.4f}, ".format(args.world_rank, iternum, float(loss.item()))
                     + ", ".join(
                         [
                             "{} = {:.4f}".format(
