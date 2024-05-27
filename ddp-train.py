@@ -87,8 +87,8 @@ def gen_optimizer(
 
 
 def setup(local_rank, world_rank, world_size, master_address: str, master_port: str):
-    # logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
-    # print(       f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+    logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+    print(       f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
 
     # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
     # print(f"{devices=}")
@@ -96,8 +96,8 @@ def setup(local_rank, world_rank, world_size, master_address: str, master_port: 
     if local_rank is not None:
         torch.cuda.set_device(local_rank)
 
-    if world_rank is None:
-        world_rank = local_rank
+    # if world_rank is None:
+    #     world_rank = local_rank
 
     os.environ["MASTER_ADDR"] = master_address
     os.environ["MASTER_PORT"] = master_port
@@ -255,6 +255,16 @@ def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, o
 
 
 def main(rank, config, args):
+    """
+    Rank is normally set automatically by mp.spawn()
+    """
+
+    if args.world_rank is None:
+        # World rank was not set because we ran this outside of slurm, just get local rank
+        args.world_rank = rank
+    else:
+        # World rank is set to node_id * ngpus_per_node, so we have to add the local rank
+        args.world_rank = args.world_rank + rank
 
     logging.info(f"{rank=}, {args.world_size=}")
 
@@ -268,7 +278,7 @@ def main(rank, config, args):
     os.makedirs(f"{outpath}/x-id", exist_ok=True)
 
     tensorboard_logger = None
-    if config.progress.tensorboard.logdir is not None and rank == 0:
+    if config.progress.tensorboard.logdir is not None and args.world_rank == 0:
         tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
@@ -563,13 +573,25 @@ if __name__ == "__main__":
     else:
         ngpus_per_node = 1
 
-    if ngpus_per_node > 1:
-        # POV: you ssh into a node and run `python train_ddp.py` directly
+    world_rank = os.getenv("SLURM_PROCID", None)
+    world_size = os.getenv("SLURM_NTASKS", None)
+
+    if world_rank is None and world_size is None:
+        # Running manually, no slurm variables set
         args.world_rank = None
         args.world_size = ngpus_per_node
         mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
     else:
-        # POV: you run things on a slurm cluster with sbatch sbatch.sh
-        args.world_rank = int(os.getenv("SLURM_PROCID"))
-        args.world_size = int(os.getenv("SLURM_NTASKS"))
-        main(None, config, args)
+        # Running things on a slurm cluster with sbatch sbatch.sh
+        args.world_rank = int(world_rank) * ngpus_per_node
+        args.world_size = int(world_size) * ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+
+
+
+    # if ngpus_per_node > 1:
+    #     # POV: you ssh into a node and run `python train_ddp.py` directly
+
+    # else:
+    #     # POV: you
+    #     main(None, config, args)
