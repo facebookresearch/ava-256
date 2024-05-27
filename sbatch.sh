@@ -2,7 +2,7 @@
 #SBATCH --partition=learn
 #SBATCH --time=1:00:00
 #SBATCH --job-name=AVA256_TRAIN
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --gpus-per-node=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-gpu=32

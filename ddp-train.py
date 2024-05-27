@@ -449,7 +449,7 @@ def main(rank, config, args):
                 if iternum % 20_000 == 0:
                     save_checkpoints = True
 
-            if save_checkpoints:
+            if save_checkpoints and args.world_rank == 0:
                 logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
                 torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
                 torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
@@ -458,7 +458,7 @@ def main(rank, config, args):
 
             if not args.nodisplayloss:
                 logging.info(
-                    "Rank {} Iteration {} loss = {:.4f}, ".format(rank, iternum, float(loss.item()))
+                    "Rank {} Iteration {} loss = {:.4f}, ".format(args.world_rank, iternum, float(loss.item()))
                     + ", ".join(
                         [
                             "{} = {:.4f}".format(
