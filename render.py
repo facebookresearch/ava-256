@@ -45,7 +45,7 @@ if __name__ == "__main__":
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Train dataset mean/std texture and vertex for normalization
-    train_captures, train_dirs = train_csv_loader(train_params.base_dir, train_params.data_csv, train_params.nids)
+    train_captures, train_dirs = train_csv_loader(train_params.dataset_dir, train_params.data_csv, train_params.nids)
     dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
 
     batchsize = 1
@@ -74,14 +74,14 @@ if __name__ == "__main__":
     driver_capture = MugsyCapture(
         mcd=args.driver_id.split("--")[0], mct=args.driver_id.split("--")[1], sid=args.driver_id.split("--")[2]
     )
-    driver_dir = f"{train_params.base_dir}/{args.driver_id}/decoder"
+    driver_dir = f"{train_params.dataset_dir}/{args.driver_id}/decoder"
     driver_dataset = AvaSingleCaptureDataset(driver_capture, driver_dir, downsample=train_params.downsample)
 
     # Driven capture dataloader
     driven_capture = MugsyCapture(
         mcd=args.driven_id.split("--")[0], mct=args.driven_id.split("--")[1], sid=args.driven_id.split("--")[2]
     )
-    driven_dir = f"{train_params.base_dir}/{args.driven_id}/decoder"
+    driven_dir = f"{train_params.dataset_dir}/{args.driven_id}/decoder"
     driven_dataset = AvaSingleCaptureDataset(driven_capture, driven_dir, downsample=train_params.downsample)
 
     texmean = dataset.texmean
