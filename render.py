@@ -140,7 +140,7 @@ if __name__ == "__main__":
     while driven is None:
         driven = next(driveniter)
 
-    iter = 0
+    it = 0
 
     for driver in tqdm(driver_loader, desc="Rendering Frames"):
         # Skip if any of the frames is empty
@@ -210,6 +210,8 @@ if __name__ == "__main__":
         rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
         rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
 
-        render_img([[gt, rgb_orig, rgb_driven]], f"{output_dir}/img_{iter:06d}.png")
+        render_img([[gt, rgb_orig, rgb_driven]], f"{output_dir}/img_{it:06d}.png")
 
-        iter += 1
+        it += 1
+
+    print(f"Done! Saved {it} images to {output_dir}")

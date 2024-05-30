@@ -5,6 +5,7 @@ import itertools
 import logging, platform
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -31,6 +32,7 @@ from models.bottlenecks.vae import kl_loss_stable
 from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
 
 sys.dont_write_bytecode = True
+
 
 class HostnameFilter(logging.Filter):
     hostname = platform.node()
@@ -88,7 +90,7 @@ def gen_optimizer(
 
 def setup(local_rank, world_rank, world_size, master_address: str, master_port: str):
     logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
-    print(       f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+    print(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
 
     # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
     # print(f"{devices=}")
@@ -283,22 +285,22 @@ def main(rank, config, args):
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
 
-    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(args.world_rank, args.world_size, train_params)
+    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(
+        args.world_rank, args.world_size, train_params
+    )
 
     starttime = time.time()
     assetpath = Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
 
     if train_params.checkpoint:
+        logging.info(f"Loading checkpoint from {train_params.checkpoint}")
         ae = load_checkpoint(ae, train_params.checkpoint)
     ae = ae.train().to("cuda")
 
     vertmean, vertstd = torch.Tensor(dataset.vertmean).to("cuda"), dataset.vertstd
 
-    if rank is not None:
-        model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
-    else:
-        model = DDP(ae)
+    model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
     optim_type = "adam"
     _, optim = gen_optimizer(
@@ -333,6 +335,13 @@ def main(rank, config, args):
     driver_dataiter = iter(driver_dataloader)
 
     iternum = 0
+    if train_params.checkpoint:
+        # TODO(julieta) this is not a very robust way to determine iteration number...
+        # TODO(julieta) decide what to do about lr scheduler
+        numbers = re.findall(r"\d+", train_params.checkpoint)
+        if not numbers:
+            raise ValueError(f"Checkpoint given but it does not contain an iteration number: {train_params.checkpoint}")
+        iternum = int(numbers[-1])
 
     for _ in range(train_params.num_epochs):
         for data in dataloader:
@@ -432,11 +441,11 @@ def main(rank, config, args):
                     rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
                     renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
 
-                if rank == 0:
+                if args.world_rank == 0:
                     render_img(renderImages, f"{outpath}/progress_{iternum}.png")
 
                 # cross id generation
-                if config.progress.cross_id and rank == 0:
+                if config.progress.cross_id and args.world_rank == 0:
                     xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
                     model.train()
 
@@ -450,9 +459,21 @@ def main(rank, config, args):
                     save_checkpoints = True
 
             if save_checkpoints and args.world_rank == 0:
-                logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
-                torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
-                torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+                # Save model state
+                fname_params = "{}/aeparams.pt".format(outpath)
+                fname_params_iter = "{}/aeparams_{:06d}.pt".format(outpath, iternum)
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params}")
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params_iter}")
+                torch.save(model.state_dict(), fname_params)
+                torch.save(model.state_dict(), fname_params_iter)
+
+                # Save optimizer as well
+                fname_optim = "{}/optimparams.pt".format(outpath)
+                fname_optim_iter = "{}/optimparams_{:06d}.pt".format(outpath, iternum)
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_optim}")
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_optim_iter}")
+                torch.save(optim.state_dict(), fname_optim)
+                torch.save(optim.state_dict(), fname_optim_iter)
 
             del cudadata
 
@@ -499,9 +520,7 @@ def main(rank, config, args):
             maxiter = train_params.maxiter  # that ought to be enough for anyone
 
             if iternum >= maxiter:
-                logging.info(
-                    f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} / {maxiter}"
-                )
+                logging.info(f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} / {maxiter}")
                 lend = time.time()
                 totaltime = lend - lstart
                 times = {"totaltime": totaltime, "maxiter": iternum}
@@ -570,6 +589,7 @@ if __name__ == "__main__":
     # Update worldsize with number of GPUs
     if torch.cuda.is_available():
         ngpus_per_node = torch.cuda.device_count()
+        logging.info(f"Using {ngpus_per_node} GPUs per node.")
     else:
         ngpus_per_node = 1
 
@@ -581,17 +601,9 @@ if __name__ == "__main__":
         args.world_rank = None
         args.world_size = ngpus_per_node
         mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+        # main(0, config, args)
     else:
         # Running things on a slurm cluster with sbatch sbatch.sh
         args.world_rank = int(world_rank) * ngpus_per_node
         args.world_size = int(world_size) * ngpus_per_node
         mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
-
-
-
-    # if ngpus_per_node > 1:
-    #     # POV: you ssh into a node and run `python train_ddp.py` directly
-
-    # else:
-    #     # POV: you
-    #     main(None, config, args)
