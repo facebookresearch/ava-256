@@ -95,8 +95,8 @@ def setup(local_rank, world_rank, world_size, master_address: str, master_port: 
     # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
     # print(f"{devices=}")
 
-    if local_rank is not None:
-        torch.cuda.set_device(local_rank)
+    # if local_rank is not None:
+    torch.cuda.set_device(local_rank)
 
     # if world_rank is None:
     #     world_rank = local_rank
@@ -293,6 +293,8 @@ def main(rank, config, args):
     assetpath = Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
 
+    # device = torch.cuda.current_device()
+
     if train_params.checkpoint:
         logging.info(f"Loading checkpoint from {train_params.checkpoint}")
         ae = load_checkpoint(ae, train_params.checkpoint)
@@ -464,8 +466,8 @@ def main(rank, config, args):
                 fname_params_iter = "{}/aeparams_{:06d}.pt".format(outpath, iternum)
                 logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params}")
                 logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params_iter}")
-                torch.save(model.state_dict(), fname_params)
-                torch.save(model.state_dict(), fname_params_iter)
+                torch.save(model.module.state_dict(), fname_params)
+                torch.save(model.module.state_dict(), fname_params_iter)
 
                 # Save optimizer as well
                 fname_optim = "{}/optimparams.pt".format(outpath)

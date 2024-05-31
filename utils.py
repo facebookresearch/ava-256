@@ -10,6 +10,7 @@ from PIL import Image
 
 from data.utils import MugsyCapture
 from igl import point_mesh_squared_distance
+
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
@@ -115,9 +116,19 @@ def get_autoencoder(dataset, assetpath: str):
     return ae
 
 
+def unparallel_state_dict(sd):
+    """Make a DDP model saved with model.state_dict() loadable by a non-DDP model."""
+    for k in list(sd.keys()):
+        if k.startswith("module."):
+            sd[k.replace("module.", "")] = sd[k]
+            del sd[k]
+    return sd
+
+
 def load_checkpoint(ae, filename):
-    ae = th.nn.DataParallel(ae)
     checkpoint = th.load(filename)
+    # NOTE(julieta) if someone forgot to save model.module.state_dict() and saved model.state_dict() insteadz
+    checkpoint = unparallel_state_dict(checkpoint)
     ae.load_state_dict(checkpoint, strict=True)
     return ae
 
