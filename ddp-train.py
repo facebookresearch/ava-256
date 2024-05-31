@@ -304,16 +304,33 @@ def main(rank, config, args):
 
     model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
+    iternum = 0
+    if train_params.checkpoint:
+        # TODO(julieta) this is not a very robust way to determine iteration number...
+        # TODO(julieta) decide what to do about lr scheduler
+        numbers = re.findall(r"\d+", train_params.checkpoint)
+        if not numbers:
+            raise ValueError(f"Checkpoint given but it does not contain an iteration number: {train_params.checkpoint}")
+        iternum = int(numbers[-1])
+
+
+    initial_lr = train_params.init_learning_rate
+
+    if iternum != 0:
+        # NOTE(julieta) this is not technically correct, find a better way to deal with interrupted iternum
+        initial_lr = train_params.init_learning_rate * train_params.gamma
+
     optim_type = "adam"
     _, optim = gen_optimizer(
         model,
         optim_type,
         train_params.batchsize,
         rank,
-        train_params.init_learning_rate,
+        initial_lr,
         tensorboard_logger,
         args.worldsize,
     )
+
     scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=train_params.gamma)
 
     loss_weights: Dict[str, float] = {
@@ -335,15 +352,6 @@ def main(rank, config, args):
     logging.info("OUTPUT SET :{}".format(output_set))
 
     driver_dataiter = iter(driver_dataloader)
-
-    iternum = 0
-    if train_params.checkpoint:
-        # TODO(julieta) this is not a very robust way to determine iteration number...
-        # TODO(julieta) decide what to do about lr scheduler
-        numbers = re.findall(r"\d+", train_params.checkpoint)
-        if not numbers:
-            raise ValueError(f"Checkpoint given but it does not contain an iteration number: {train_params.checkpoint}")
-        iternum = int(numbers[-1])
 
     for _ in range(train_params.num_epochs):
         for data in dataloader:
