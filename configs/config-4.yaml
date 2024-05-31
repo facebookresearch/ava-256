@@ -4,7 +4,9 @@ train:
   data_csv: "256_ids.csv"                       # csv of identities to use
   nids: 4                                       # number of identities to train on
   # checkpoint: "checkpoints/aeparams.pt"       # checkpoint to resume training from
-  checkpoint: ""                                # checkpoint to resume training from
+  # checkpoint to resume training from
+  # checkpoint: ""
+  checkpoint: "/checkpoint/avatar/julietamartinez/ava-256/checkpoints/4ids/aeparams_140000.pt"
   maxiter: 10_000_000                           # maximum number of iterations to train for
   num_epochs: 10                                # number of epochs to train for
   init_learning_rate: 2.0e-4                    # learning rate

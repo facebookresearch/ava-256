@@ -23,4 +23,4 @@ export MASTER_PORT=$(expr 10000 + $(echo -n $SLURM_JOBID | tail -c 4))
 # export NCCL_DEBUG=INFO
 
 cd /home/$USER/rsc/ava-256/ || exit 1
-srun python ddp-train.py --masteraddress ${MASTER_ADDR} --masterport ${MASTER_PORT}
+srun python ddp-train.py --masteraddress ${MASTER_ADDR} --masterport ${MASTER_PORT} --config configs/config-256.yaml
