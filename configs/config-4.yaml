@@ -4,7 +4,8 @@ train:
   data_csv: "256_ids.csv"                       # csv of identities to use
   nids: 4                                       # number of identities to train on
   # checkpoint: "checkpoints/aeparams.pt"       # checkpoint to resume training from
-  checkpoint: ""                                # checkpoint to resume training from
+  # checkpoint: ""
+  checkpoint: "/checkpoint/avatar/julietamartinez/ava-256/checkpoints/4ids/aeparams_300000.pt"
   maxiter: 10_000_000                           # maximum number of iterations to train for
   num_epochs: 10                                # number of epochs to train for
   init_learning_rate: 2.0e-4                    # learning rate
@@ -22,9 +23,9 @@ train:
   output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model
 
 progress:
-  output_path: "run/"                           # output path where the progress is saved
+  output_path: "run-4/"                         # output path where the progress is saved
   cross_id: True                                # wheter to visualize cross-id animation during validation
   cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
-    logdir: "log/"                              # directory to store tensorboard outputs
+    logdir: "log-4/"                            # directory to store tensorboard outputs

@@ -7,7 +7,7 @@ import sys
 
 import torch
 from setuptools import setup
-from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDAExtension
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
 # Create a custom subclass that doesn't use Ninja, since Ninja doesn't support

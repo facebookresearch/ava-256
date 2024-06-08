@@ -42,7 +42,7 @@ class Raymarcher(nn.Module):
             template=decout["template"],
             warp=decout["warp"] if "warp" in decout else None,
             rayterm=rayterm,
-            **{k: v for k, v in renderoptions.items() if k in mvpraymarch.__code__.co_varnames}
+            **{k: v for k, v in renderoptions.items() if k in mvpraymarch.__code__.co_varnames},
         )
 
         assert rayrgba is not None

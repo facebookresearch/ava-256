@@ -1,50 +1,53 @@
 """Train an autoencoder."""
 
 import argparse
-import hashlib as hlib
-import importlib
-import importlib.util
 import itertools
-import logging
+import logging, platform
 import os
-import pathlib
 import random
+import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, Union
 
 import einops
 import numpy as np
-import pandas as pd
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
-from fvcore.common.config import CfgNode as CN
-from torch.utils.tensorboard import SummaryWriter
-import torch.optim.lr_scheduler as lr_scheduler
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import none_collate_fn
-from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
+from data.utils import get_framelist_neuttex_and_neutvert
+from fvcore.common.config import CfgNode as CN
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
-from utils import load_checkpoint, get_autoencoder, render_img, train_csv_loader, tocuda
-from data.utils import get_framelist_neuttex_and_neutvert
+from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
 
 sys.dont_write_bytecode = True
+
+
+class HostnameFilter(logging.Filter):
+    hostname = platform.node()
+
+    def filter(self, record):
+        record.hostname = HostnameFilter.hostname
+        return True
+
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.addFilter(HostnameFilter())
+formatter = logging.Formatter("%(asctime)s %(hostname)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
@@ -85,12 +88,22 @@ def gen_optimizer(
     return params, opt
 
 
-def setup(rank, world_size, masterport):
-    logging.info(f"Rank is: {rank}")
-    torch.cuda.set_device(rank)
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = masterport
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+def setup(local_rank, world_rank, world_size, master_address: str, master_port: str):
+    logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+    print(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
+
+    # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
+    # print(f"{devices=}")
+
+    # if local_rank is not None:
+    torch.cuda.set_device(local_rank)
+
+    # if world_rank is None:
+    #     world_rank = local_rank
+
+    os.environ["MASTER_ADDR"] = master_address
+    os.environ["MASTER_PORT"] = master_port
+    dist.init_process_group("nccl", rank=world_rank, world_size=world_size)
 
 
 def cleanup():
@@ -98,17 +111,13 @@ def cleanup():
 
 
 def prepare(rank, world_size, train_params):
-    base_dir = train_params.base_dir
-    datatype = train_params.dataset
+    base_dir = train_params.dataset_dir
     train_dirs = None
     train_captures = None
 
-    # Load
-    if datatype == "ava":
-        train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
-        dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
-    else:
-        raise ValueError(f"Unsupported dataset: {datatype}")
+    # Load dataset
+    train_captures, train_dirs = train_csv_loader(base_dir, train_params.data_csv, train_params.nids)
+    dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
 
     starttime = time.time()
 
@@ -247,8 +256,21 @@ def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, o
     print(f"Cross ID viz took {time.time() - starttime}")
 
 
-def main(rank, world_size, config, args):
-    setup(rank, world_size, args.masterport)
+def main(rank, config, args):
+    """
+    Rank is normally set automatically by mp.spawn()
+    """
+
+    if args.world_rank is None:
+        # World rank was not set because we ran this outside of slurm, just get local rank
+        args.world_rank = rank
+    else:
+        # World rank is set to node_id * ngpus_per_node, so we have to add the local rank
+        args.world_rank = args.world_rank + rank
+
+    logging.info(f"{rank=}, {args.world_size=}")
+
+    setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
 
     train_params = config.train
 
@@ -257,21 +279,24 @@ def main(rank, world_size, config, args):
     outpath = os.path.join(current_dir, config.progress.output_path)
     os.makedirs(f"{outpath}/x-id", exist_ok=True)
 
-    logpath = "{}/log-r{}.txt".format(outpath, rank)
-
     tensorboard_logger = None
-    if config.progress.tensorboard.logdir is not None and rank == 0:
+    if config.progress.tensorboard.logdir is not None and args.world_rank == 0:
         tensorboard_logdir = config.progress.output_path + "/" + config.progress.tensorboard.logdir
         logging.info(f"Creating tensorboard output at {tensorboard_logdir}")
         tensorboard_logger = SummaryWriter(tensorboard_logdir)
 
-    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(rank, world_size, train_params)
+    dataset, all_neut_avgtex_vert, dataloader, driver_dataloader = prepare(
+        args.world_rank, args.world_size, train_params
+    )
 
     starttime = time.time()
-    assetpath = pathlib.Path(__file__).parent / "assets"
+    assetpath = Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
 
+    # device = torch.cuda.current_device()
+
     if train_params.checkpoint:
+        logging.info(f"Loading checkpoint from {train_params.checkpoint}")
         ae = load_checkpoint(ae, train_params.checkpoint)
     ae = ae.train().to("cuda")
 
@@ -279,16 +304,33 @@ def main(rank, world_size, config, args):
 
     model = DDP(ae, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
+    iternum = 0
+    if train_params.checkpoint:
+        # TODO(julieta) this is not a very robust way to determine iteration number...
+        # TODO(julieta) decide what to do about lr scheduler
+        numbers = re.findall(r"\d+", train_params.checkpoint)
+        if not numbers:
+            raise ValueError(f"Checkpoint given but it does not contain an iteration number: {train_params.checkpoint}")
+        iternum = int(numbers[-1])
+
+
+    initial_lr = train_params.init_learning_rate
+
+    if iternum != 0:
+        # NOTE(julieta) this is not technically correct, find a better way to deal with interrupted iternum
+        initial_lr = train_params.init_learning_rate * train_params.gamma
+
     optim_type = "adam"
     _, optim = gen_optimizer(
         model,
         optim_type,
         train_params.batchsize,
         rank,
-        train_params.init_learning_rate,
+        initial_lr,
         tensorboard_logger,
         args.worldsize,
     )
+
     scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=train_params.gamma)
 
     loss_weights: Dict[str, float] = {
@@ -302,7 +344,6 @@ def main(rank, world_size, config, args):
 
     # train
     starttime = time.time()
-    prevloss = np.inf
 
     # Total experiment time
     lstart = time.time()
@@ -311,8 +352,6 @@ def main(rank, world_size, config, args):
     logging.info("OUTPUT SET :{}".format(output_set))
 
     driver_dataiter = iter(driver_dataloader)
-
-    iternum = 0
 
     for _ in range(train_params.num_epochs):
         for data in dataloader:
@@ -347,7 +386,9 @@ def main(rank, world_size, config, args):
                 cudadata["idindex"],
                 cudadata["camindex"],
                 running_avg_scale=running_avg_scale,
-                # These control the behaviour of the forward pass, and make the optimization easier/harder and more/less stable
+                # NOTE(julieta) These control the behaviour of the forward pass, and passing them makes the optimization
+                # easier. This can be tricky to get your head around, but is crucial to understand how the optimization
+                # of so many primitives manages to converge.
                 gt_geo=gt_geo,
                 residuals_weight=residuals_weight,
                 output_set=output_set,
@@ -394,8 +435,8 @@ def main(rank, world_size, config, args):
             torch.nn.utils.clip_grad_norm_(model.parameters(), train_params.clip)
             optim.step()
 
-            # Compute iter total time anyway -- no extra syncing needed, there is already an implicity sync during `backward`
-            # and an explicit one to check for loss explosion
+            # NOTE(julieta) We compute iter total time anyway -- no extra syncing needed, there is already an implicit
+            # sync during `backward`
             iter_total_time = time.time() - iter_start_time
 
             # print progress
@@ -410,11 +451,11 @@ def main(rank, world_size, config, args):
                     rgb_orig = einops.rearrange(rgb_orig, "c h w -> h w c")
                     renderImages.append([gt, rgb_orig, (gt - rgb_orig) ** 2 * 10])
 
-                if rank == 0:
-                    imgout = render_img(renderImages, f"{outpath}/progress_{iternum}.png")
+                if args.world_rank == 0:
+                    render_img(renderImages, f"{outpath}/progress_{iternum}.png")
 
                 # cross id generation
-                if config.progress.cross_id and rank == 0:
+                if config.progress.cross_id and args.world_rank == 0:
                     xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum)
                     model.train()
 
@@ -427,16 +468,28 @@ def main(rank, world_size, config, args):
                 if iternum % 20_000 == 0:
                     save_checkpoints = True
 
-            if save_checkpoints:
-                logging.warning(f"rank {rank} save checkpoint to outpath {outpath}")
-                torch.save(model.state_dict(), "{}/aeparams.pt".format(outpath))
-                torch.save(model.state_dict(), "{}/aeparams_{:06d}.pt".format(outpath, iternum))
+            if save_checkpoints and args.world_rank == 0:
+                # Save model state
+                fname_params = "{}/aeparams.pt".format(outpath)
+                fname_params_iter = "{}/aeparams_{:06d}.pt".format(outpath, iternum)
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params}")
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_params_iter}")
+                torch.save(model.module.state_dict(), fname_params)
+                torch.save(model.module.state_dict(), fname_params_iter)
+
+                # Save optimizer as well
+                fname_optim = "{}/optimparams.pt".format(outpath)
+                fname_optim_iter = "{}/optimparams_{:06d}.pt".format(outpath, iternum)
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_optim}")
+                logging.warning(f"rank {args.world_rank} save checkpoint to outpath {fname_optim_iter}")
+                torch.save(optim.state_dict(), fname_optim)
+                torch.save(optim.state_dict(), fname_optim_iter)
 
             del cudadata
 
             if not args.nodisplayloss:
                 logging.info(
-                    "Rank {} Iteration {} loss = {:.4f}, ".format(rank, iternum, float(loss.item()))
+                    "Rank {:>3d} Iteration {} loss = {:.4f}, ".format(args.world_rank, iternum, float(loss.item()))
                     + ", ".join(
                         [
                             "{} = {:.4f}".format(
@@ -477,9 +530,7 @@ def main(rank, world_size, config, args):
             maxiter = train_params.maxiter  # that ought to be enough for anyone
 
             if iternum >= maxiter:
-                logging.info(
-                    f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} max allowed iter {maxiter}"
-                )
+                logging.info(f"Stopping training due to max iter limit, rank {rank} curr iter {iternum} / {maxiter}")
                 lend = time.time()
                 totaltime = lend - lstart
                 times = {"totaltime": totaltime, "maxiter": iternum}
@@ -519,10 +570,9 @@ if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser(description="Train an autoencoder")
 
-    parser.add_argument("--noprogress", action="store_true", help="don't output training progress images")
-    parser.add_argument("--nostab", action="store_true", help="don't check loss stability")
+    # Can overwrite some of these parameter to, eg, train over multiple hosts
     parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
-    parser.add_argument("--masterip", type=str, default="localhost", help="master node ip address")
+    parser.add_argument("--masteraddress", type=str, default="localhost", help="master node address (hostname or ip)")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
 
@@ -540,14 +590,30 @@ if __name__ == "__main__":
 
     # Validate config
     if config.progress.cross_id:
-        assert config.progress.cross_id_n_subjects < config.train.nids, "number of subjects for cross id must be < number of subjects in the dataset"
+        assert (
+            config.progress.cross_id_n_subjects < config.train.nids
+        ), "number of subjects for cross id must be < number of subjects in the dataset"
 
     train_params = config.train
 
-    world_size = config.train.num_gpus
-
-
-    if world_size > 1:
-        mp.spawn(main, args=(world_size, config, args), nprocs=world_size)
+    # Update worldsize with number of GPUs
+    if torch.cuda.is_available():
+        ngpus_per_node = torch.cuda.device_count()
+        logging.info(f"Using {ngpus_per_node} GPUs per node.")
     else:
-        main(0, 1, config, args)
+        ngpus_per_node = 1
+
+    world_rank = os.getenv("SLURM_PROCID", None)
+    world_size = os.getenv("SLURM_NTASKS", None)
+
+    if world_rank is None and world_size is None:
+        # Running manually, no slurm variables set
+        args.world_rank = None
+        args.world_size = ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+        # main(0, config, args)
+    else:
+        # Running things on a slurm cluster with sbatch sbatch.sh
+        args.world_rank = int(world_rank) * ngpus_per_node
+        args.world_size = int(world_size) * ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)

@@ -1,22 +1,20 @@
 import json
-import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TextIO, Tuple, Union
+from typing import Dict, List, Optional, TextIO, Tuple, Union
 
 import einops
 import numpy as np
 import pandas as pd
-import torch
 import torch as th
-from igl import point_mesh_squared_distance
 from PIL import Image
+
+from data.utils import MugsyCapture
+from igl import point_mesh_squared_distance
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
-
-from data.utils import MugsyCapture
 
 
 def closest_point(mesh, points):
@@ -30,8 +28,8 @@ def closest_point(mesh, points):
 ObjectType = Dict[str, Union[List[np.ndarray], np.ndarray]]
 
 
-def tocuda(d: Union[torch.Tensor, np.ndarray, Dict, List]) -> Union[torch.Tensor, Dict, List]:
-    if isinstance(d, torch.Tensor):
+def tocuda(d: Union[th.Tensor, np.ndarray, Dict, List]) -> Union[th.Tensor, Dict, List]:
+    if isinstance(d, th.Tensor):
         return d.to("cuda")
     elif isinstance(d, dict):
         return {k: tocuda(v) for k, v in d.items()}
@@ -46,7 +44,6 @@ def get_renderoptions():
 
 
 def get_autoencoder(dataset, assetpath: str):
-    import torch
 
     import models.autoencoder as aemodel
     import models.bg.mlp2d as bglib
@@ -63,7 +60,7 @@ def get_autoencoder(dataset, assetpath: str):
     print("@@@ Get autoencoder ABLATION CONFIG FILE : length of data set : {}".format(len(dataset.identities)))
     print(f"dataset vertmean: {dataset.vertmean.shape}")
 
-    vertmean = torch.from_numpy(dataset.vertmean)
+    vertmean = th.from_numpy(dataset.vertmean)
     vertstd = dataset.vertstd
 
     # load per-textel triangulation indices
@@ -119,9 +116,19 @@ def get_autoencoder(dataset, assetpath: str):
     return ae
 
 
+def unparallel_state_dict(sd):
+    """Make a DDP model saved with model.state_dict() loadable by a non-DDP model."""
+    for k in list(sd.keys()):
+        if k.startswith("module."):
+            sd[k.replace("module.", "")] = sd[k]
+            del sd[k]
+    return sd
+
+
 def load_checkpoint(ae, filename):
-    ae = torch.nn.DataParallel(ae)
-    checkpoint = torch.load(filename)
+    checkpoint = th.load(filename)
+    # NOTE(julieta) if someone forgot to save model.module.state_dict() and saved model.state_dict() insteadz
+    checkpoint = unparallel_state_dict(checkpoint)
     ae.load_state_dict(checkpoint, strict=True)
     return ae
 
@@ -345,8 +352,8 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
     vt, vi, vti = dotobj["vt"], dotobj["vi"], dotobj["vti"]
 
     index_img, bary_img, _ = make_closest_uv_barys(
-        torch.from_numpy(vt),
-        torch.from_numpy(vti),
+        th.from_numpy(vt),
+        th.from_numpy(vti),
         uv_shape=resolution,
         flip_uv=False,
     )
@@ -371,15 +378,14 @@ def create_uv_baridx(objpath: str, resolution: int = 1024):
     }
 
 
-def render_img(listsofimages, outpath):
+def render_img(listsofimages, outpath) -> None:
     """saves image given a list of list of images
 
     Args:
         listsofimages (List[List[np.array]]): list of list of images
         outpath (str): path to save the image
-
     Returns:
-        PIL.Image: image
+        Nothing, the image is saved to outpath
     """
 
     combined_imgs = []
@@ -392,8 +398,6 @@ def render_img(listsofimages, outpath):
     rgb = np.clip(rgb, 0, 255).astype(np.uint8)
     rgb_img = Image.fromarray(rgb)
     rgb_img.save(outpath)
-
-    return rgb_img
 
 
 def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[MugsyCapture], List[Path]]:

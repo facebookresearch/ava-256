@@ -176,7 +176,7 @@ class MVPRaymarch(Function):
             termthresh,
             griddim,
             blocksizex,
-            blocksizey
+            blocksizey,
         )
 
         self.save_for_backward(
@@ -273,7 +273,7 @@ class MVPRaymarch(Function):
             termthresh,
             griddim,
             blocksizex,
-            blocksizey
+            blocksizey,
         )
 
         return (
@@ -385,7 +385,7 @@ def mvpraymarch(
             "griddim": griddim,
             "blocksize": blocksize,
             "bwdblocksize": bwdblocksize,
-        }
+        },
     )
     return out
 

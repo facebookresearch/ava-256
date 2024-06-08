@@ -1,15 +1,16 @@
-import numpy as np
 import io
-from PIL import Image
-import pillow_avif
-import matplotlib.pyplot as plt
-import matplotlib.collections as mcoll
 import pickle
-from zipp import Path as ZipPath
-from plyfile import PlyData
-import plyfile
-from utils import *
+
+import matplotlib.collections as mcoll
+import matplotlib.pyplot as plt
 import mpl_toolkits
+import numpy as np
+from PIL import Image
+from zipp import Path as ZipPath
+
+from plyfile import PlyData
+from utils import *
+
 
 def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savefig=False, showfig=False):
 
@@ -64,12 +65,12 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     ax.axis("off")
 
     plt.imshow(image)
-    
+
     xs = twod[0, vi]
     ys = twod[1, vi]
-    segments = np.array(list(zip(xs, ys))).swapaxes(1,2)
+    segments = np.array(list(zip(xs, ys))).swapaxes(1, 2)
     print(segments.shape)
-    line_segments = mcoll.LineCollection(segments, colors='blue', linewidth=0.1)
+    line_segments = mcoll.LineCollection(segments, colors="blue", linewidth=0.1)
 
     ax.add_collection(line_segments)
 
@@ -102,20 +103,19 @@ def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll
     dotobj = load_obj(topology_path)
 
     vi = dotobj["vi"]
-    
-    vertices = vertices.swapaxes(0,1)
-        
+
+    vertices = vertices.swapaxes(0, 1)
+
     xs = vertices[0, vi]
     ys = vertices[1, vi]
     zs = vertices[2, vi]
-    segments = np.array(list(zip(xs, ys, zs))).swapaxes(1,2)
-    line_segments = mpl_toolkits.mplot3d.art3d.Line3DCollection(segments, colors='blue', linewidth=0.1)
+    segments = np.array(list(zip(xs, ys, zs))).swapaxes(1, 2)
+    line_segments = mpl_toolkits.mplot3d.art3d.Line3DCollection(segments, colors="blue", linewidth=0.1)
 
     ax.add_collection(line_segments)
     ax.set_xlim([-200, 200])
     ax.set_ylim([-200, 200])
     ax.set_zlim([-200, 200])
-
 
     ax.view_init(elev=elev, azim=azim, roll=roll)
 

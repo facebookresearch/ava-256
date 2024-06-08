@@ -1,15 +1,15 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-# 
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
 from setuptools import setup
-
-from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 if __name__ == "__main__":
     import torch
+
     setup(
         name="utils",
         ext_modules=[
@@ -22,8 +22,8 @@ if __name__ == "__main__":
                         "-std=c++14",
                         "-lineinfo",
                     ]
-                }
+                },
             )
         ],
-        cmdclass={"build_ext": BuildExtension}
+        cmdclass={"build_ext": BuildExtension},
     )
