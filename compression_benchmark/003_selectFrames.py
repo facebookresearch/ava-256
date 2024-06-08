@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
 # Selects 100 files from the MultiFace Dataset for benchmark compression analysis.
 # Randomly selects 2 frames from 5 camera views from 10 subjects, E001_Neutral_Eyes_Open.
 import glob
