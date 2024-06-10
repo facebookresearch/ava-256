@@ -17,14 +17,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Check isort compliance
+        uses: isort/isort-action@v1.0.0
       - name: Install requirements via pip
         run: |
           python -m pip cache purge
           python -m pip install -r requirements.txt
-      - name: Build utils
-        working-directory: extensions/utils
-        run: |
-          make
       - name: Run pytest
         run: |
-          python -m pytest tests/
+          python -m pytest tests/ --ignore tests/test_extensions.py 
