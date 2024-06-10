@@ -10,7 +10,7 @@ pyarrow
 pytest
 libigl
 pillow
-pillow - avif - plugin
+pillow-avif-plugin
 pyyaml
 yacs
 plyfile
