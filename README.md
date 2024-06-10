@@ -93,6 +93,10 @@ To run visualization, you can run
 python render.py
 ```
 
+### License
+
+See LICENSE.
+
 ## Metrics
 TODO
 
