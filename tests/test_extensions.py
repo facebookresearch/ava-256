@@ -7,7 +7,7 @@ import torch
 
 from extensions.utils.utils import compute_raydirs
 from models.raymarchers.mvpraymarcher import Raymarcher as RaymarcherOSS
-from utils import load_krt
+from utils import load_camera_calibration
 
 
 @pytest.fixture
@@ -18,8 +18,8 @@ def imshape() -> Tuple[int, int]:
 
 @pytest.fixture
 def KRT() -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    krt_dicts = load_krt("assets/KRT")
-    krt = krt_dicts["400069"]
+    krt_dicts = load_camera_calibration("assets/camera_calibration.json")
+    krt = krt_dicts["400940"]
     downsample = 1.0
 
     campos = torch.from_numpy((-np.dot(krt["extrin"][:3, :3].T, krt["extrin"][:3, 3])).astype(np.float32)).cuda()

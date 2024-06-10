@@ -13,12 +13,12 @@ import models.decoders.assembler as decoderlib
 import models.encoders.expression as expression_encoder_lib
 import models.encoders.identity as identity_encoder_lib
 import models.raymarchers.mvpraymarcher as raymarcherlib
-from utils import create_uv_baridx, load_krt, load_obj
+from utils import create_uv_baridx, load_camera_calibration, load_obj
 
 
 @pytest.fixture
 def autoencoder() -> aemodel.Autoencoder:
-    krt_dicts = load_krt("assets/KRT")
+    krt_dicts = load_camera_calibration("assets/camera_calibration.json")
 
     verts = torch.from_numpy(np.fromfile("assets/021924.bin", dtype=np.float32).reshape(1, -1, 3))
 
