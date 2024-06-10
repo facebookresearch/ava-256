@@ -22,8 +22,8 @@ jobs:
           python -m pip cache purge
           python -m pip install -r requirements.txt
       - name: Build utils
+        working-directory: extensions/utils
         run: |
-          cd extensions/utils
           make
       - name: Run pytest
         run: |
