@@ -43,7 +43,7 @@ def raydirs(KRT, imshape):
     camrot = camrot.contiguous()
     focal = focal.contiguous()
     princpt = princpt.contiguous()
-    
+
     imwidth, imheight = imshape
 
     volume_radius = 256.0

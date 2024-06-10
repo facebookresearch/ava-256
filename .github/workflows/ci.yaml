@@ -19,6 +19,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Check isort compliance
         uses: isort/isort-action@v1.0.0
+      - name: Check linting
+        uses: psf/black@stable
       - name: Install requirements via pip
         run: |
           python -m pip cache purge

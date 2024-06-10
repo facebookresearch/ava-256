@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 import mpl_toolkits
 import numpy as np
 from PIL import Image
+from plyfile import PlyData
 from zipp import Path as ZipPath
 
-from plyfile import PlyData
 from utils import *
 
 

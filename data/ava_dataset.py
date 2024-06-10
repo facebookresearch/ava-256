@@ -16,13 +16,13 @@ import pandas as pd
 import pillow_avif
 import torch.utils.data
 from PIL import Image
+from plyfile import PlyData
 from torch import multiprocessing as mp
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 from zipp import Path as ZipPath
 
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert, getitem
-from plyfile import PlyData
 from utils import load_camera_calibration
 
 mp.set_start_method("spawn", force=True)

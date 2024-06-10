@@ -2,8 +2,9 @@
 
 import argparse
 import itertools
-import logging, platform
+import logging
 import os
+import platform
 import random
 import re
 import sys
@@ -19,6 +20,7 @@ import torch.multiprocessing as mp
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
+from fvcore.common.config import CfgNode as CN
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -26,7 +28,6 @@ from torch.utils.tensorboard import SummaryWriter
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import get_framelist_neuttex_and_neutvert
-from fvcore.common.config import CfgNode as CN
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
 from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
@@ -312,7 +313,6 @@ def main(rank, config, args):
         if not numbers:
             raise ValueError(f"Checkpoint given but it does not contain an iteration number: {train_params.checkpoint}")
         iternum = int(numbers[-1])
-
 
     initial_lr = train_params.init_learning_rate
 
