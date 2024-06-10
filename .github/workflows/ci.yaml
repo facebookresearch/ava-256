@@ -21,6 +21,14 @@ jobs:
         run: |
           python -m pip cache purge
           python -m pip install -r requirements.txt
+      - name: Build raymarcher
+        run: |
+          cd extensions/mvpyraymarch
+          build
+      - name: Build raymarcher
+        run: |
+          cd ../utils
+          build
       - name: Run pytest
         run: |
           python -m pytest tests/
