@@ -39,6 +39,11 @@ def KRT() -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 def raydirs(KRT, imshape):
     """Implicitly test compute_raydirs from OSS extensions"""
     campos, camrot, focal, princpt = KRT
+    campos = campos.contiguous()
+    camrot = camrot.contiguous()
+    focal = focal.contiguous()
+    princpt = princpt.contiguous()
+    
     imwidth, imheight = imshape
 
     volume_radius = 256.0
