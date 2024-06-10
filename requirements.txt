@@ -1,13 +1,16 @@
 einops
 fvcore
+libigl
 matplotlib
 numpy
 pandas
 Pillow
 plyfile
+pyarrow
 pytest
 PyYAML
 setuptools
+tensorboard
 torch
 tqdm
 trimesh
