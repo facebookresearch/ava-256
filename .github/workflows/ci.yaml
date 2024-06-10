@@ -1,0 +1,32 @@
+name: Python CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Check isort compliance
+        uses: isort/isort-action@v1.0.0
+      - name: Check linting
+        uses: psf/black@stable
+      - name: Install requirements via pip
+        run: |
+          python -m pip cache purge
+          python -m pip install -r requirements.txt
+      - name: Run pytest
+        run: |
+          python -m pytest tests/ --ignore tests/test_extensions.py --ignore tests/test_autoencoder.py
