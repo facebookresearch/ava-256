@@ -5,6 +5,7 @@ matplotlib
 numpy
 pandas
 Pillow
+pillow-avif-plugin
 plyfile
 pyarrow
 pytest
@@ -14,4 +15,5 @@ tensorboard
 torch
 tqdm
 trimesh
+yacs
 zipp
