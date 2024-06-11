@@ -169,7 +169,6 @@ class Autoencoder(nn.Module):
 
         return resultout
 
-
     def decode(
         self,
         # Camera parameters
@@ -215,13 +214,13 @@ class Autoencoder(nn.Module):
         # Apply alpha mask to the primitives
         if alpha_mask is not None:
             nh = int(np.sqrt(self.decoder_assembler.nprims))
-            alpha_mask_strided = F.interpolate(
-                alpha_mask.unsqueeze(0).unsqueeze(0), 
-                size=(nh, nh),
-                antialias=False
-            )[0][0]
+            alpha_mask_strided = F.interpolate(alpha_mask.unsqueeze(0).unsqueeze(0), size=(nh, nh), antialias=False)[0][
+                0
+            ]
             valid_prims = alpha_mask_strided.reshape(-1).bool()
-            assert valid_prims.shape[0] == decout["template"].shape[1], f"valid_prims: {valid_prims.shape}, template: {decout['template'].shape}"
+            assert (
+                valid_prims.shape[0] == decout["template"].shape[1]
+            ), f"valid_prims: {valid_prims.shape}, template: {decout['template'].shape}"
             decout["template"] = decout["template"][:, valid_prims].contiguous()
             decout["primpos"] = decout["primpos"][:, valid_prims].contiguous()
             decout["primrot"] = decout["primrot"][:, valid_prims].contiguous()

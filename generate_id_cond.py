@@ -4,6 +4,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""Script to generate ID Cond"""
+
 import argparse
 import pathlib
 from typing import Dict, Union
@@ -18,12 +20,11 @@ from utils import get_autoencoder, load_checkpoint, tocuda, train_csv_loader
 
 if __name__ == "__main__":
     """
-    This is a script to generate and dump the id conditioning outputs for all identities. For downstream
-    tasks where the universal decoder is already trained, it would be easier to use the cached identity conditioning outputs.
+    This is a script to generate and dump the id conditioning outputs for all identities.
+    For downstream tasks where the universal decoder is already trained, it would be
+    easier to use the cached identity conditioning outputs.
     """
-    parser = argparse.ArgumentParser(
-        description="Generate id conditioning outputs for all identities"
-    )
+    parser = argparse.ArgumentParser(description="Generate id conditioning outputs for all identities")
     parser.add_argument(
         "--checkpoint",
         type=str,
@@ -36,9 +37,7 @@ if __name__ == "__main__":
         default="identity_conditioning/",
         help="output directory",
     )
-    parser.add_argument(
-        "--config", default="configs/config.yaml", type=str, help="config yaml file"
-    )
+    parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
 
     parser.add_argument("--opts", default=[], type=str, nargs="+")
     args = parser.parse_args()
@@ -55,12 +54,8 @@ if __name__ == "__main__":
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Train dataset mean/std texture and vertex for normalization
-    train_captures, train_dirs = train_csv_loader(
-        train_params.dataset_dir, train_params.data_csv, train_params.nids
-    )
-    dataset = AvaMultiCaptureDataset(
-        train_captures, train_dirs, downsample=train_params.downsample
-    )
+    train_captures, train_dirs = train_csv_loader(train_params.dataset_dir, train_params.data_csv, train_params.nids)
+    dataset = AvaMultiCaptureDataset(train_captures, train_dirs, downsample=train_params.downsample)
 
     # Serialize and pickle the dataset
     torch.save(dataset, output_dir + "/ae_info.pkl")
@@ -80,9 +75,7 @@ if __name__ == "__main__":
     texstd = dataset.texstd
     vertstd = dataset.vertstd
 
-    for single_capture, single_dataset in tqdm(
-        dataset.single_capture_datasets.items(), desc="Captures"
-    ):
+    for single_capture, single_dataset in tqdm(dataset.single_capture_datasets.items(), desc="Captures"):
         # Get neutral
         neut_avgtex, neut_vert = single_dataset.neut_avgtex, single_dataset.neut_vert
         # Normalize
@@ -106,6 +99,4 @@ if __name__ == "__main__":
 
         torch.save(id_cond, f"{save_dir}/id_cond.pkl")
 
-    print(
-        f"Done! Dumped {len(dataset.single_capture_datasets)} id_cond to {output_dir}"
-    )
+    print(f"Done! Dumped {len(dataset.single_capture_datasets)} id_cond to {output_dir}")
