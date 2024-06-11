@@ -113,10 +113,9 @@ class Autoencoder(nn.Module):
         # Return {z_tex, b_tex, z_geo, b_geo}
         # Step 0. Get identity encoding
         if id_cond is None:
-            id_cond = self.id_encoder(target_neut_verts, target_neut_avgtex)
-        else:
             assert target_neut_avgtex is not None, "Must provide target_neut_avgtex or id_cond"
             assert target_neut_verts is not None, "Must provide target_neut_verts or id_cond"
+            id_cond = self.id_encoder(target_neut_verts, target_neut_avgtex)
 
         # Step 1. Get expression encoding
         expr_code = self.expr_encoder(
