@@ -69,6 +69,9 @@ class UniversalEncoder(torch.nn.Module):
             x: Input images of shape [N, num_views, in_chans, H, W]. We assume eye/face images have an equal
             number of views.
             x_cond: Conditioning Input images of shape [N, num_views, num_conds, in_chans, H, W].
+        
+        Returns:
+            A dictionary containing the expression code of shape [N, out_chans]
         """
         # Step 1. Feature extraction for eyes and faces
         # Process current frame
