@@ -17,3 +17,6 @@ tqdm
 trimesh
 yacs
 zipp
+plyfile
+fvcore
+timm
