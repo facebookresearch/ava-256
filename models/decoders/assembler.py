@@ -64,6 +64,14 @@ class DecoderAssembler(nn.Module):
         self.register_buffer("barim", torch.tensor(barim), persistent=False)
 
         self.register_buffer("adaptwarps", torch.zeros(self.nprims))
+    
+    def decode_geo(self, id_cond: dict, expr_encoding: torch.Tensor) -> torch.Tensor:
+        """ Method to decode the guide mesh from expression encoding
+        """
+        z_geo, b_geo = id_cond["z_geo"], id_cond["b_geo"]
+        _, geo, _, _, _, = self.geodec(expr_encoding, z_geo, b_geo)
+        geo = geo * self.vertstd + self.vertmean
+        return geo
 
     def forward(
         self,

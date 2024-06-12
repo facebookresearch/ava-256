@@ -282,3 +282,8 @@ class Autoencoder(nn.Module):
         }
 
         return decout
+
+    def decode_geo(self, id_cond: dict, expr_encoding: torch.Tensor) -> torch.Tensor:
+        """ Method to decode geometry from expression encoding
+        """
+        return self.decoder_assembler.decode_geo(id_cond, expr_encoding)
