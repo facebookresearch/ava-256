@@ -1,0 +1,24 @@
+[tool.black]
+line-length = 120  # override black's default line-length
+target-version = ['py38']
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.tox
+  | venv
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+
+[tool.flake8]
+max-line-length = 120

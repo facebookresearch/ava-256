@@ -1,0 +1,30 @@
+__pycache__
+.pytest_cache
+.ipynb_checkpoints
+tests/__pycache__
+log/
+extras/
+
+*.jpg
+*.png
+*.avif
+*.out
+*.err
+*run*/
+*.zip
+*.mp4
+assets/rsc-assets
+ava256/
+viz/
+*log/
+*/**/__pycache__
+checkpoints/
+
+# Extensions
+extensions-mvp/*/build/**
+extensions-mvp/*/**.so
+
+# Compiled extension kernels
+build/*/**
+extensions/*/**.so
+extensions/**/build
