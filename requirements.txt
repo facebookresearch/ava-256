@@ -20,3 +20,4 @@ zipp
 plyfile
 fvcore
 timm
+imageio

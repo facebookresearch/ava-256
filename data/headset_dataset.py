@@ -14,9 +14,8 @@ import io
 import os
 import pickle
 from pathlib import Path
-from typing import List, Optional, Set, Tuple, TypeVar, Union
+from typing import List, Dict, Optional, Set, Tuple, TypeVar, Union
 
-import einops
 import cv2
 import numpy as np
 import pandas as pd
@@ -30,7 +29,7 @@ from zipfile import ZipFile
 from zipp import Path as ZipPath
 
 
-class SingleCaptureDataset(torch.utils.data.IterableDataset):
+class SingleCaptureDataset(torch.utils.data.Dataset):
     """
     Dataset with headset images for a single capture
 
@@ -119,7 +118,7 @@ class SingleCaptureDataset(torch.utils.data.IterableDataset):
             return self._neutral_img
         else:
             for idx, segment in enumerate(self.framelist["seg_id"]):
-                if segment.startswith("neutral"):
+                if segment.startswith("neutral") or segment.startswith("EXP_neutral"):
                     segment_name = segment.split("-")[0]
 
                     # Get the middle frame
@@ -127,7 +126,7 @@ class SingleCaptureDataset(torch.utils.data.IterableDataset):
                     self._neutral_img = self.get_img_by_segment_and_frame(segment, seg_frame_count//2)
                     return self._neutral_img
             else:
-                raise ValueError("Unable to find any neutral images")
+                raise ValueError(f"Unable to find any neutral images. Subject: {self.capture.sid}")
 
     def get_img_by_segment_and_frame(self, segment: str, frame: int) -> np.ndarray:
         imgs = []
@@ -146,39 +145,51 @@ class SingleCaptureDataset(torch.utils.data.IterableDataset):
             arr = arr.transpose(2, 0, 1).astype(np.float32)[:1]
             imgs.append(arr)
         imgs_arr = np.stack(imgs, axis=0)
-        return torch.from_numpy(imgs_arr)
+        return (torch.from_numpy(imgs_arr) / 255. - 0.5) * 2
 
-    def get_assets_by_id(self, idx: int) -> np.ndarray:
+    def get_assets_by_id(self, idx: int) -> Dict[str, torch.Tensor]:
         # Get the segment and frame
         segment, frame = self.framelist["seg_id"][idx], self.framelist["frame_id"][idx]
         segment_name = segment.split("-")[0]
         if self.load_latent_code:
+            entry_name = f"{self.capture.sid}-{segment}_{segment_name}_{frame}"
             try:
                 latent_code = pickle.loads(ZipPath(
                     self.latent_code_dir / "rosetta_correspondences.zip",
                     f"{self.capture.sid}-{segment}_{segment_name}_{frame}"
                 ).read_bytes())["expression"]
             except FileNotFoundError:
+                print(f"Failed to locate {entry_name} in {self.latent_code_dir / 'rosetta_correspondences.zip'}")
                 return None
         else:
             latent_code = np.zeros((self.self.latent_code_dim,))
 
         return {
             "headset_cam_img": self.get_img_by_segment_and_frame(segment, frame),
-            "cond_headset_cam_img": self.neutral_img,
-            "gt_latent_code": torch.from_numpy(latent_code)
+            "cond_headset_cam_img": self.neutral_img[:, None],
+            "gt_latent_code": torch.from_numpy(latent_code),
+            "index": {
+                "ident": self.capture.sid,
+                "segment": segment_name,
+                "frame": frame
+            }
         }
 
-    def __iter__(self):
-        while True:
-            idx = np.random.randint(0, len(self.framelist))
-            yield self.get_assets_by_id(idx)
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        return self.get_assets_by_id(idx)
+
+    def __len__(self) -> int:
+        return len(self.framelist)
+
+    def get_random_frame(self):
+        idx = np.random.randint(0, len(self.framelist))
+        return self.get_assets_by_id(idx)
 
     def get_img_size(self) -> Tuple[int, int]:
         return (self.height, self.width)
 
 
-class MultiCaptureDataset(torch.utils.data.ChainDataset):
+class MultiCaptureDataset(torch.utils.data.IterableDataset):
     """
     Dataset with headset images for multiple captures
 
@@ -202,11 +213,17 @@ class MultiCaptureDataset(torch.utils.data.ChainDataset):
         self.identities = captures
         if latent_code_directories is None:
             latent_code_directories = [None] * len(captures)
-        all_dataset = [
+        self.datasets = [
             SingleCaptureDataset(cap, cap_dir, code_dir, downsample, time_downsample, cameras_specified)
-            for cap, cap_dir, code_dir in tqdm(zip(captures, directories, latent_code_directories), total=len(captures))
+            for cap, cap_dir, code_dir in zip(captures, directories, latent_code_directories)
         ]
-        super().__init__(all_dataset)
+
+    def __iter__(self):
+        while True:
+            dataset_idx = np.random.randint(0, len(self.datasets))
+            # dataset_idx = torch.randint(0, len(self.datasets), (1,)).item()
+            dataset = self.datasets[dataset_idx]
+            yield dataset.get_random_frame()
 
 
 if __name__ == "__main__":
@@ -228,7 +245,7 @@ if __name__ == "__main__":
         dataset,
         batch_size=16,
         drop_last=True,
-        num_workers=16,
+        num_workers=8,
         pin_memory=True,
         prefetch_factor=10,
         collate_fn=none_collate_fn,

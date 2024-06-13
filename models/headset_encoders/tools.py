@@ -1,8 +1,15 @@
-from typing import List, Dict, Set, Tuple, Union, Optional
+from typing import List, Tuple, Optional
 
+import cv2
 import numpy as np
 import torch
-import torch.nn as nn
+
+
+def get_color_map(name: str = "COLORMAP_JET") -> np.ndarray:
+    """Return a 256 x 3 array representing a color map from OpenCV."""
+    color_map = np.arange(256, dtype=np.uint8).reshape(1, 256)
+    color_map = cv2.applyColorMap(color_map, getattr(cv2, name))
+    return color_map[0, :, ::-1].copy()
 
 
 def rvec_to_R(rvec: torch.Tensor) -> torch.Tensor:

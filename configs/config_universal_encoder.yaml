@@ -1,0 +1,24 @@
+device: "cuda"
+train:
+  dataset_dir: "/uca/julieta/oss/hmc"           # where the headset dataset is
+  gt_dir: "/uca/leochli/oss/ava256_udmapping_v2/render_expression_regressor"
+  data_csv: "256_ids_merged.csv"                # csv of identities to use
+  nids: 4                                       # number of identities to train on
+  checkpoint: ""                                # checkpoint to resume training from
+  scheduler_checkpoint: ""                      # checkpoint to resume scheduler from
+  maxiter: 100_000                              # maximum number of iterations to train for
+  init_learning_rate: 1.0e-3                    # learning rate
+  downsample: 1                                 # image downsampling factor at data loader, 1 is no downsampling
+  num_workers: 8                                # number of workers for each dataloader
+  batchsize: 8                                  # batch size per per gpu
+  eval_freq: 10                                 # Frequency for running on the validation set
+  losses:                                       # weights for loss terms
+    img_L1: 1.0                                 # l1 image loss, the most important
+    expression: 1.0e-3                          # expression code loss
+    geo_weighted_L1: 5.0                        # facial geomtry loss
+
+progress:
+  output_path: "/home/shaojieb/encoder_run/"    # output path where the progress is saved
+  tensorboard:                                  # tensorboard parameters
+    log_freq: 10                                # tensorboard logging frequency, in training iterations
+    logdir: "log/"                              # directory to store tensorboard outputs
