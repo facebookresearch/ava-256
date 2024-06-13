@@ -1,9 +1,8 @@
 from typing import Any, Dict, List, Optional, Union, Sequence
 import numpy as np
 import torch
+import torch.distributed as dist
 
-from care.strict.utils.torch import to_device
-from care.strict.utils.torch import profiled_function
 from utils import get_autoencoder, load_checkpoint
 from models.headset_encoders.tools import rvec_to_R
 
@@ -102,7 +101,7 @@ class UDWrapper(torch.nn.Module):
             ident_cond = []
             for fn in fns:
                 try:
-                    ident_cond.append(torch.load(fn))
+                    ident_cond.append(torch.load(fn, map_location=f"cuda:{dist.get_rank() if dist.is_initialized() else 0}"))
                 except FileNotFoundError:
                     ident_cond.append(None)
 
@@ -137,7 +136,10 @@ class UDWrapper(torch.nn.Module):
 
         # Get ae_info
         # FIXME: Serialized by torch, must load by torch
-        ae_info = torch.load(self.ae_info_fn_template.format(exp_name=ud_exp_name))
+        ae_info = torch.load(
+            self.ae_info_fn_template.format(exp_name=ud_exp_name), 
+            map_location=f"cuda:{dist.get_rank() if dist.is_initialized() else 0}"
+        )
 
         # Get Autoencoder and load from checkpoint
         ae = get_autoencoder(ae_info, assetpath="assets").eval()
@@ -182,7 +184,6 @@ class UDWrapper(torch.nn.Module):
         id_cond = self.get_id_cond(idents)
         return self.ae.decode_geo(id_cond=id_cond, encoding=encodings.reshape(-1, 16, 4, 4))
 
-    @profiled_function
     def render(self, inputs: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """
         Inference universal avatars by rendering their frontals

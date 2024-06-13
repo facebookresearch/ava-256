@@ -156,15 +156,15 @@ class UniversalEncoderLoss(torch.nn.Module):
         return losses
 
     def forward(
-        self, 
-        data: Dict[str, Any], 
+        self,
+        data: Dict[str, Any],
         loss_weights: Dict[str, float],
         use_face_mask: bool = True
     ) -> Dict[str, Union[torch.Tensor, float]]:
         """Compute the latent expression code, and then decode"""
         outputs = {
-            "headset_cam_img": data["headset_cam_img"], 
-            "expression_gt": data["gt_latent_code"], 
+            "headset_cam_img": data["headset_cam_img"],
+            "expression_gt": data["gt_latent_code"],
             "index": data["index"]
         }
         identities = [self.ident_str_mapping[ident[:6]] for ident in data["index"]["ident"]]

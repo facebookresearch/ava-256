@@ -150,14 +150,15 @@ def prepare(rank, world_size, train_params):
     datasets = {"train": train_dataset, "valid": valid_dataset}
 
     maxiter = train_params.maxiter
-    logging.info(f" Train maxiter : {maxiter}, batchsize: {train_params.batchsize}")
+    if rank == 0:
+        logging.info(f" Train maxiter : {maxiter}, batchsize: {train_params.batchsize}")
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=train_params.batchsize,
         num_workers=train_params.num_workers,
         pin_memory=False,
         # sampler=train_sampler,
-        prefetch_factor=4,
+        prefetch_factor=2,
         persistent_workers=True,
         collate_fn=none_collate_fn,
     )
@@ -167,7 +168,7 @@ def prepare(rank, world_size, train_params):
         num_workers=train_params.num_workers,
         pin_memory=False,
         # sampler=valid_sampler,
-        prefetch_factor=4,
+        prefetch_factor=2,
         persistent_workers=True,
         collate_fn=none_collate_fn,
     )
@@ -195,17 +196,21 @@ def main(rank, config, args):
     Rank is normally set automatically by mp.spawn()
     """
 
-    # if args.world_rank is None:
-    #     # World rank was not set because we ran this outside of slurm, just get local rank
-    #     args.world_rank = rank
-    # else:
-    #     # World rank is set to node_id * ngpus_per_node, so we have to add the local rank
-    #     args.world_rank = args.world_rank + rank
+    if args.world_rank is None:
+        # World rank was not set because we ran this outside of slurm, just get local rank
+        args.world_rank = rank
+    else:
+        # World rank is set to node_id * ngpus_per_node, so we have to add the local rank
+        args.world_rank = args.world_rank + rank
 
-    # logging.info(f"{rank=}, {args.world_size=}")
+    def selective_logging_info(msg: str):
+        if rank == 0:
+            logging.info(msg)
+
+    logging.info(f"{rank=}, {args.world_size=}")
     torch.manual_seed(rank)
     np.random.seed(rank)
-    # setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
+    setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
 
     train_params = config.train
     current_file = os.path.abspath(__file__)
@@ -224,12 +229,13 @@ def main(rank, config, args):
     ue = UniversalEncoder(in_chans=1, out_chans=256, num_views=4)
     model = UniversalEncoderLoss(ue, identities=dec_ids).to(rank)
     if train_params.checkpoint:
-        logging.info(f"Loading checkpoint from {train_params.checkpoint}")
+        selective_logging_info(f"Loading checkpoint from {train_params.checkpoint}")
         model = load_checkpoint(model, train_params.checkpoint)
     if args.world_size > 1:
+        selective_logging_info("Converting BN to SyncBN...")
         torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    para_model = model
-    # para_model = DDP(ue, device_ids=[rank], output_device=rank, find_unused_parameters=True)
+    # para_model = model
+    para_model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=False)
 
     initial_lr = train_params.init_learning_rate
     _, optim = gen_optimizer(
@@ -243,17 +249,17 @@ def main(rank, config, args):
     )
     scheduler = lr_scheduler.CosineAnnealingLR(optim, T_max=train_params.maxiter)
     if train_params.scheduler_checkpoint:
-        logging.info(f"Loading scheduler checkpoint from {train_params.scheduler_checkpoint}")
+        selective_logging_info(f"Loading scheduler checkpoint from {train_params.scheduler_checkpoint}")
         scheduler.load_state_dict(train_params.scheduler_checkpoint)
 
-    logging.info("Model/optimizer/scheduler instantiated ({:.2f} s)".format(time.time() - starttime))
+    selective_logging_info("Model/optimizer/scheduler instantiated ({:.2f} s)".format(time.time() - starttime))
 
     # 2. Warmup dataloader and prefetching
     starttime = time.time()
-    logging.info("Warming up dataloader and prefetching...")
+    selective_logging_info("Warming up dataloader and prefetching...")
     warmup_dataloader(dataloaders["train"])
     warmup_dataloader(dataloaders["valid"])
-    logging.info("Done warming up and prefetching ({:.2f} s)".format(time.time() - starttime))
+    selective_logging_info("Done warming up and prefetching ({:.2f} s)".format(time.time() - starttime))
 
     # 3. Train
     starttime = time.time()
@@ -293,6 +299,7 @@ def main(rank, config, args):
                 log_loss_txt = print_loss(train_loss_log)
                 logging.info(f"Iter {iternum} | {log_loss_txt} | time: {iter_total_time / train_params.log_freq:.3f} s")
                 train_loss_log = defaultdict(list)
+                iter_total_time = 0
             if iternum % train_params.viz_freq == 0:
                 viz = model.get_visual(output)
                 rgb_viz = Image.fromarray(np.clip(viz, 0, 255).astype(np.uint8))
@@ -352,28 +359,24 @@ if __name__ == "__main__":
 
     config.merge_from_list(args.opts)
 
-    args.world_rank = 0
-    args.world_size = 1
-    main(0, config, args)
+    # Update worldsize with number of GPUs
+    if torch.cuda.is_available():
+        ngpus_per_node = torch.cuda.device_count()
+        logging.info(f"Using {ngpus_per_node} GPUs per node.")
+    else:
+        ngpus_per_node = 1
 
-    # # Update worldsize with number of GPUs
-    # if torch.cuda.is_available():
-    #     ngpus_per_node = torch.cuda.device_count()
-    #     logging.info(f"Using {ngpus_per_node} GPUs per node.")
-    # else:
-    #     ngpus_per_node = 1
+    world_rank = os.getenv("SLURM_PROCID", None)
+    world_size = os.getenv("SLURM_NTASKS", None)
 
-    # world_rank = os.getenv("SLURM_PROCID", None)
-    # world_size = os.getenv("SLURM_NTASKS", None)
-
-    # if world_rank is None and world_size is None:
-    #     # Running manually, no slurm variables set
-    #     args.world_rank = None
-    #     args.world_size = ngpus_per_node
-    #     mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
-    #     # main(0, config, args)
-    # else:
-    #     # Running things on a slurm cluster with sbatch sbatch.sh
-    #     args.world_rank = int(world_rank) * ngpus_per_node
-    #     args.world_size = int(world_size) * ngpus_per_node
-    #     mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+    if world_rank is None and world_size is None:
+        # Running manually, no slurm variables set
+        args.world_rank = None
+        args.world_size = ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
+        # main(0, config, args)
+    else:
+        # Running things on a slurm cluster with sbatch sbatch.sh
+        args.world_rank = int(world_rank) * ngpus_per_node
+        args.world_size = int(world_size) * ngpus_per_node
+        mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
