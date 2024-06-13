@@ -12,10 +12,10 @@ from typing import Dict, Union
 
 import torch
 import yaml
+from fvcore.common.config import CfgNode as CN
 from tqdm import tqdm
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
-from fvcore.common.config import CfgNode as CN
 from utils import get_autoencoder, load_checkpoint, tocuda, train_csv_loader
 
 if __name__ == "__main__":
