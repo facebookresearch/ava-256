@@ -156,10 +156,9 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
             try:
                 latent_code = pickle.loads(ZipPath(
                     self.latent_code_dir / "rosetta_correspondences.zip",
-                    f"{self.capture.sid}-{segment}_{segment_name}_{frame}"
+                    entry_name
                 ).read_bytes())["expression"]
             except FileNotFoundError:
-                print(f"Failed to locate {entry_name} in {self.latent_code_dir / 'rosetta_correspondences.zip'}")
                 return None
         else:
             print("Using placeholder for GT code.")

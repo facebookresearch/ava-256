@@ -158,6 +158,7 @@ def prepare(rank, world_size, train_params):
         pin_memory=False,
         # sampler=train_sampler,
         prefetch_factor=4,
+        persistent_workers=True,
         collate_fn=none_collate_fn,
     )
     valid_dataloader = torch.utils.data.DataLoader(
@@ -167,6 +168,7 @@ def prepare(rank, world_size, train_params):
         pin_memory=False,
         # sampler=valid_sampler,
         prefetch_factor=4,
+        persistent_workers=True,
         collate_fn=none_collate_fn,
     )
     dataloaders = {"train": train_dataloader, "valid": valid_dataloader}
@@ -261,6 +263,7 @@ def main(rank, config, args):
         "geo_weighted_L1": train_params.losses.geo_weighted_L1
     }
     iternum = scheduler.last_epoch
+    iter_total_time = 0
     if args.world_rank == 0:
         train_loss_log = defaultdict(list)  # Keep a loss log iff we're on rank 0
     for data in dataloaders["train"]:
@@ -280,17 +283,17 @@ def main(rank, config, args):
         optim.step()
         scheduler.step()
 
-        iter_total_time = time.time() - iter_start_time
+        iter_total_time += time.time() - iter_start_time
 
         if args.world_rank == 0 and iternum > 0:
             for k, v in losses.items():
                 train_loss_log[k].append(v.mean().item())
             train_loss_log["loss"].append(loss.item())
-            if iternum % 10 == 0:
+            if iternum % train_params.log_freq == 0:
                 log_loss_txt = print_loss(train_loss_log)
-                logging.info(f"Iter {iternum} | {log_loss_txt} | time: {iter_total_time:.3f} s")
+                logging.info(f"Iter {iternum} | {log_loss_txt} | time: {iter_total_time / train_params.log_freq:.3f} s")
                 train_loss_log = defaultdict(list)
-            if iternum % 10 == 0:
+            if iternum % train_params.viz_freq == 0:
                 viz = model.get_visual(output)
                 rgb_viz = Image.fromarray(np.clip(viz, 0, 255).astype(np.uint8))
                 rgb_viz.save(f"{outpath}/train_progress_{iternum}.png")
@@ -314,15 +317,17 @@ def main(rank, config, args):
                     val_rgb_viz = Image.fromarray(np.clip(val_rgb_viz, 0, 255).astype(np.uint8))
                     val_rgb_viz.save(f"{outpath}/valid_{iternum}.png")
                 model.train()
-            if iternum % 5000 == 0:
+
+                # Save checkpoints after each validation
                 torch.save(scheduler.state_dict(), f"{outpath}/scheduler_{iternum}.pt")
                 torch.save(model.state_dict(), f"{outpath}/encoder_{iternum}.pt")
 
+            if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
+                tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
+                for k, v in losses.items():
+                    tensorboard_logger.add_scalar(k, float(v.mean().item()), iternum)
+
         del cudadata
-
-        if tensorboard_logger is not None and iternum % config.progress.tensorboard.log_freq == 0:
-            tensorboard_logger.add_scalar("Total Loss", float(loss.item()), iternum)
-
     cleanup()
 
 
