@@ -122,7 +122,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
                     segment_name = segment.split("-")[0]
 
                     # Get the middle frame
-                    seg_frame_count = len([elem for elem in self.framelist["seg_id"] if elem.startswith(segment_name)])
+                    seg_frame_count = len([s for s in self.framelist["seg_id"] if s.split("-")[0] == segment_name])
                     self._neutral_img = self.get_img_by_segment_and_frame(segment, seg_frame_count//2)
                     return self._neutral_img
             else:
@@ -162,6 +162,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
                 print(f"Failed to locate {entry_name} in {self.latent_code_dir / 'rosetta_correspondences.zip'}")
                 return None
         else:
+            print("Using placeholder for GT code.")
             latent_code = np.zeros((self.self.latent_code_dim,))
 
         return {
@@ -237,8 +238,8 @@ if __name__ == "__main__":
     base_dir = "/uca/julieta/oss/hmc"
     latent_dir = "/uca/leochli/oss/ava256_udmapping/render_expression_regressor"
     csv_path = "/home/shaojieb/rsc/ava-256/256_ids_enc.csv"
-    train_captures, train_dirs = train_headset_csv_loader(base_dir, csv_path, nids=256)
-    _, train_latent_code_dirs = train_headset_csv_loader(latent_dir, csv_path, nids=256)
+    train_captures, train_dirs = train_headset_csv_loader(base_dir, csv_path, identities=None)
+    _, train_latent_code_dirs = train_headset_csv_loader(latent_dir, csv_path, identities=None)
     dataset = MultiCaptureDataset(train_captures[3:5], train_dirs[3:5], train_latent_code_dirs[3:5], downsample=2.083)
 
     dataloader = torch.utils.data.DataLoader(

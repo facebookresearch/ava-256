@@ -18,7 +18,7 @@ train:
     geo_weighted_L1: 5.0                        # facial geomtry loss
 
 progress:
-  output_path: "/home/shaojieb/encoder_run/"    # output path where the progress is saved
+  output_path: "/home/shaojieb/encoder_run"     # output path where the progress is saved
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
     logdir: "log/"                              # directory to store tensorboard outputs

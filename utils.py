@@ -433,12 +433,16 @@ def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[Mu
     return train_captures, train_dirs
 
 
-def train_headset_csv_loader(base_dir: Path, csv_path: Path, identities: List[str]) -> Tuple[List[HeadsetCapture], List[Path]]:
+def train_headset_csv_loader(
+    base_dir: Path,
+    csv_path: Path,
+    identities: Optional[List[str]] = None
+) -> Tuple[List[HeadsetCapture], List[str]]:
     """loads train data (headset) by id given the csv file of ids
     Args:
         base_dir (Path): base directory for the dataset
         csv_path (Path): id csv file path
-        identities (List[str]): identities to use
+        identities (Optional[List[str]]): identities to use; if None, all identities are used
 
     Returns:
         List[HeadsetCapture]: train_captures: list of headset captures
@@ -450,7 +454,7 @@ def train_headset_csv_loader(base_dir: Path, csv_path: Path, identities: List[st
     train_dirs = []
 
     for capture in df.itertuples():
-        if f"{capture.sid}_{capture.hcd}--{capture.hct}" not in identities: 
+        if identities is not None and f"{capture.sid}_{capture.hcd}--{capture.hct}" not in identities:
             continue
         capture = HeadsetCapture(hcd=capture.hcd, hct=capture.hct, sid=capture.sid)
         train_captures.append(capture)
