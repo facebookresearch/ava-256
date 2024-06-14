@@ -48,9 +48,10 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     vertices = plydata["vertex"].data
     vertices = np.array([list(element) for element in vertices])
 
-    path = ZipPath(f"{base_dir}/head_pose/head_pose.zip", f"{frame_id:06d}.npy")
+    path = ZipPath(f"{base_dir}/head_pose/head_pose.zip", f"{frame_id:06d}.txt")
 
-    head_pose = np.load(io.BytesIO(path.read_bytes()))
+    headpose_bytes = path.read_bytes()
+    head_pose = np.loadtxt(io.BytesIO(headpose_bytes), dtype=np.float32)
 
     vertices = np.append(vertices, np.ones((vertices.shape[0], 1)), axis=1)
     vertices = np.matmul(head_pose, np.transpose(vertices))
@@ -75,7 +76,6 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     xs = twod[0, vi]
     ys = twod[1, vi]
     segments = np.array(list(zip(xs, ys))).swapaxes(1, 2)
-    print(segments.shape)
     line_segments = mcoll.LineCollection(segments, colors="blue", linewidth=0.1)
 
     ax.add_collection(line_segments)
@@ -83,11 +83,11 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     plt.box(False)
 
     if savefig:
-        plt.savefig("viz/mesh_demo-{subject_id}+{camera_id}+{frame_id}.png")
+        plt.savefig(f"viz/mesh_demo-{subject_id}+{camera_id}+{frame_id}.png")
     if showfig:
         plt.show()
 
-    return plt
+    plt.close()
 
 
 def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll=0, savefig=False, showfig=False):
@@ -126,6 +126,8 @@ def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll
     ax.view_init(elev=elev, azim=azim, roll=roll)
 
     if savefig:
-        plt.savefig("viz/mesh3D_demo-{subject_id}+{frame_id}.png")
+        plt.savefig(f"viz/mesh3D_demo-{subject_id}+{frame_id}.png")
     if showfig:
         plt.show()
+
+    plt.close()

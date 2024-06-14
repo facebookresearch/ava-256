@@ -59,7 +59,7 @@ def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, 
     plt.box(False)
 
     if savefig:
-        plt.savefig("viz/keypoints_demo-{subject_id}+{camera_id}+{frame_id}.png")
+        plt.savefig(f"viz/keypoints_demo-{subject_id}+{camera_id}+{frame_id}.png")
     if showfig:
         plt.show()
 
@@ -86,6 +86,7 @@ def plot_keypoints_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90,
     ax.view_init(elev=elev, azim=azim, roll=roll)
 
     if savefig:
-        plt.savefig("viz/keypoints3D_demo-{subject_id}+{frame_id}.png")
+        plt.savefig(f"viz/keypoints3D_demo-{subject_id}+{frame_id}.png")
     if showfig:
         plt.show()
+    plt.close()
