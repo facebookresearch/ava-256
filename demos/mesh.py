@@ -86,8 +86,9 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
         plt.savefig(f"viz/mesh_demo-{subject_id}+{camera_id}+{frame_id}.png")
     if showfig:
         plt.show()
-    
+
     plt.close()
+
 
 def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll=0, savefig=False, showfig=False):
 
@@ -128,5 +129,5 @@ def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll
         plt.savefig(f"viz/mesh3D_demo-{subject_id}+{frame_id}.png")
     if showfig:
         plt.show()
-    
+
     plt.close()
