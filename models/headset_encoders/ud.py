@@ -4,8 +4,9 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Any, Dict, List, Optional, Sequence, Union
+"""Wrapper for universal avatar decoder that supports batch-based inference"""
 
+from typing import Any, Dict, List, Optional, Union, Sequence
 import numpy as np
 import torch
 import torch.distributed as dist

@@ -14,8 +14,8 @@ import io
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union
 from zipfile import ZipFile
+from typing import List, Dict, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -213,44 +213,8 @@ class MultiCaptureDataset(torch.utils.data.IterableDataset):
         ]
 
     def __iter__(self):
+        # TODO: Make this a map-style dataset and use a random sampler with replacement
         while True:
             dataset_idx = np.random.randint(0, len(self.datasets))
-            # dataset_idx = torch.randint(0, len(self.datasets), (1,)).item()
             dataset = self.datasets[dataset_idx]
             yield dataset.get_random_frame()
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.path.insert(0, "/home/shaojieb/rsc/ava-256")
-    from torch import multiprocessing as mp
-
-    from data.ava_dataset import none_collate_fn
-    from utils import train_headset_csv_loader
-
-    mp.set_start_method("spawn", force=True)
-
-    base_dir = "/uca/julieta/oss/hmc"
-    latent_dir = "/uca/leochli/oss/ava256_udmapping/render_expression_regressor"
-    csv_path = "/home/shaojieb/rsc/ava-256/256_ids_enc.csv"
-    train_captures, train_dirs = train_headset_csv_loader(base_dir, csv_path, identities=None)
-    _, train_latent_code_dirs = train_headset_csv_loader(latent_dir, csv_path, identities=None)
-    dataset = MultiCaptureDataset(train_captures[3:5], train_dirs[3:5], train_latent_code_dirs[3:5], downsample=2.083)
-
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=16,
-        drop_last=True,
-        num_workers=8,
-        pin_memory=True,
-        prefetch_factor=10,
-        collate_fn=none_collate_fn,
-    )
-
-    print("Start loading data...")
-    for i, data in tqdm(enumerate(dataloader), total=1000):
-        if i == 0:
-            print(data["headset_cam_img"].shape)
-        if i >= 1000:
-            break
