@@ -289,8 +289,8 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
 
             # Head pose (global transform of the person's head)
             path = ZipPath(self.dir / "head_pose" / "head_pose.zip", f"{int(frame_id):06d}.txt")
-            headpoose_bytes = path.read_bytes()
-            headpose = np.loadtxt(io.BytesIO(headpoose_bytes), dtype=np.float32)
+            headpose_bytes = path.read_bytes()
+            headpose = np.loadtxt(io.BytesIO(headpose_bytes), dtype=np.float32)
 
             if any(i is None for i in (img, verts, avgtex, headpose)):
                 raise ValueError(f"Some of fetched data is None for {frame_id}-{camera_id}")
