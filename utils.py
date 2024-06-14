@@ -12,15 +12,15 @@ import einops
 import numpy as np
 import pandas as pd
 import torch as th
-from PIL import Image
-
-from data.utils import MugsyCapture
 from igl import point_mesh_squared_distance
+from PIL import Image
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
+
+from data.utils import MugsyCapture
 
 
 def closest_point(mesh, points):

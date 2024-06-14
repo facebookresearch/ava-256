@@ -11,13 +11,13 @@ from typing import Dict, Union
 import einops
 import torch
 import yaml
+from fvcore.common.config import CfgNode as CN
 from tqdm import tqdm
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture
-from fvcore.common.config import CfgNode as CN
 from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
 
 if __name__ == "__main__":
