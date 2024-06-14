@@ -7,7 +7,6 @@
 """Train a (really simple) universal facial encoder."""
 
 import argparse
-import itertools
 import logging
 import platform
 import os
@@ -25,9 +24,9 @@ import torch.multiprocessing as mp
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
+from importlib import import_module
 from PIL import Image
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 
 from data.headset_dataset import MultiCaptureDataset as HeadsetMultiCaptureDataset
@@ -35,10 +34,12 @@ from data.ava_dataset import none_collate_fn
 from fvcore.common.config import CfgNode as CN
 from models.headset_encoders.universal import UniversalEncoder
 from models.headset_encoders.loss import UniversalEncoderLoss
+from models.headset_encoders.ud import UDWrapper
 from utils import load_checkpoint, tocuda, train_headset_csv_loader
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 sys.dont_write_bytecode = True
+ddp_train = import_module("ddp-train")
 
 
 class HostnameFilter(logging.Filter):
@@ -59,54 +60,6 @@ handler.setFormatter(formatter)
 root.addHandler(handler)
 
 torch.backends.cudnn.benchmark = True  # gotta go fast!
-
-
-def gen_optimizer(
-    net: torch.nn.Module,
-    optim_type: str,
-    batchsize: int,
-    rank: int,
-    learning_rate: float,
-    tensorboard_logger=None,
-    worldsize: int = 1,
-):
-    params = filter(lambda x: x.requires_grad, itertools.chain(net.parameters()))
-    if optim_type == "adam":
-        opt = torch.optim.Adam(params, lr=learning_rate, betas=(0.9, 0.999))
-    elif optim_type == "sgd":
-        opt = torch.optim.SGD(params, lr=learning_rate, momentum=0.9)
-    elif optim_type == "adamw":
-        opt = torch.optim.AdamW(params, lr=learning_rate, betas=(0.9, 0.999))
-    else:
-        raise ValueError(f"Unsupported optimizer: {optim_type}")
-
-    if tensorboard_logger and rank == 0:
-        tb_hyperparams = {
-            "minibatchsize": batchsize,
-            "globalbatchsize": batchsize * worldsize,
-            "learningrate": learning_rate,
-            "optimizer": optim_type,
-        }
-
-        tensorboard_logger.add_hparams(tb_hyperparams, {"hp_metric": 1.0}, run_name=".")
-    return params, opt
-
-
-def setup(local_rank, world_rank, world_size, master_address: str, master_port: str):
-    logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
-
-    # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
-    # print(f"{devices=}")
-
-    # if local_rank is not None:
-    torch.cuda.set_device(local_rank)
-
-    # if world_rank is None:
-    #     world_rank = local_rank
-
-    os.environ["MASTER_ADDR"] = master_address
-    os.environ["MASTER_PORT"] = master_port
-    dist.init_process_group("nccl", rank=world_rank, world_size=world_size)
 
 
 def cleanup():
@@ -157,8 +110,7 @@ def prepare(rank, world_size, train_params):
         batch_size=train_params.batchsize,
         num_workers=train_params.num_workers,
         pin_memory=False,
-        # sampler=train_sampler,
-        prefetch_factor=2,
+        prefetch_factor=4,
         persistent_workers=True,
         collate_fn=none_collate_fn,
     )
@@ -167,8 +119,7 @@ def prepare(rank, world_size, train_params):
         batch_size=train_params.batchsize,
         num_workers=train_params.num_workers,
         pin_memory=False,
-        # sampler=valid_sampler,
-        prefetch_factor=2,
+        prefetch_factor=4,
         persistent_workers=True,
         collate_fn=none_collate_fn,
     )
@@ -210,7 +161,7 @@ def main(rank, config, args):
     logging.info(f"{rank=}, {args.world_size=}")
     torch.manual_seed(rank)
     np.random.seed(rank)
-    setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
+    ddp_train.setup(rank, args.world_rank, args.world_size, args.masteraddress, args.masterport)
 
     train_params = config.train
     current_file = os.path.abspath(__file__)
@@ -227,18 +178,18 @@ def main(rank, config, args):
     # 1. Create model, optimizer, scheduler
     starttime = time.time()
     ue = UniversalEncoder(in_chans=1, out_chans=256, num_views=4)
-    model = UniversalEncoderLoss(ue, identities=dec_ids).to(rank)
+    ud = UDWrapper(ud_exp_name="/uca/leochli/oss/ava256_universal_decoder", identities=dec_ids)
+    model = UniversalEncoderLoss(ue, ud, identities=dec_ids).to(rank)
     if train_params.checkpoint:
         selective_logging_info(f"Loading checkpoint from {train_params.checkpoint}")
         model = load_checkpoint(model, train_params.checkpoint)
     if args.world_size > 1:
         selective_logging_info("Converting BN to SyncBN...")
         torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    # para_model = model
     para_model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=False)
 
     initial_lr = train_params.init_learning_rate
-    _, optim = gen_optimizer(
+    _, optim = ddp_train.gen_optimizer(
         model,
         "adam",
         train_params.batchsize,
@@ -280,6 +231,8 @@ def main(rank, config, args):
         if data is None:
             continue
         iter_start_time = time.time()
+        
+        # TODO: Add data augmentation here.
         cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
         optim.zero_grad()
         output, losses = para_model(cudadata, loss_weights)

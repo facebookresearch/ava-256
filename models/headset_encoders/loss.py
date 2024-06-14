@@ -14,12 +14,12 @@ import cv2
 import imageio
 import torch
 import torch.nn.functional as F
-from models.headset_encoders.ud import UDWrapper, FixedFrontalViewGenerator
+from models.headset_encoders.ud import FixedFrontalViewGenerator
 from models.headset_encoders.tools import get_color_map
 
 
 class UniversalEncoderLoss(torch.nn.Module):
-    def __init__(self, encoder: torch.nn.Module, identities: List[str]) -> None:
+    def __init__(self, encoder: torch.nn.Module, decoder: torch.nn.Module, identities: List[str]) -> None:
         """
         A wrapper for running, decoding the evaluating universal headset facial encoders
 
@@ -29,14 +29,13 @@ class UniversalEncoderLoss(torch.nn.Module):
         """
         super().__init__()
         self._encoder = encoder
-        self._decoder = UDWrapper(
-            ud_exp_name="/uca/leochli/oss/ava256_universal_decoder",
-            identities=identities
-        )
-        self._view_generator = FixedFrontalViewGenerator(down_sample_factor=2)
+        self._decoder = decoder
         device = torch.device("cuda")
         self._decoder.to(device)
         self._decoder.requires_grad_(False)  # Do not update decoder parameters
+
+        # For generating viewpoints that will be used in frontal view generation
+        self._view_generator = FixedFrontalViewGenerator(down_sample_factor=2)
         self._view_generator.to(device)
 
         self.ident_str_mapping = {ident[:6]: ident for ident in identities}
@@ -49,7 +48,11 @@ class UniversalEncoderLoss(torch.nn.Module):
     @property
     def encoder(self) -> torch.nn.Module:
         return self._encoder
-    
+
+    @property
+    def decoder(self) -> torch.nn.Module:
+        return self._decoder
+
     def crop_face_regions(self, diag: torch.Tensor) -> torch.Tensor:
         """
         Keep only the face region from the input image.

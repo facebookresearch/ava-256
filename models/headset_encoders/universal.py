@@ -6,12 +6,10 @@
 
 """Universal facial encoder"""
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
-import numpy as np
 import timm
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
@@ -116,13 +114,3 @@ class UniversalEncoder(torch.nn.Module):
         return {
             "expression": expr_code,
         }
-
-
-if __name__ == "__main__":
-    num_conds = 1
-    hmc_cond_imgs = torch.rand((2, num_views, num_conds, in_chans, 400, 400), dtype=torch.float32)
-    expression_encoder = UniversalEncoder(
-        in_chans=in_chans, out_chans=out_chans, num_views=num_views, num_conditions=num_conds
-    )
-    expr_code = expression_encoder(hmc_cam_imgs, hmc_cond_imgs)["expression"]
-    assert expr_code.shape == torch.Size([2, 256])
