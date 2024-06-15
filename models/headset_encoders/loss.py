@@ -14,9 +14,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from einops import rearrange
-
-from models.headset_encoders.ud import FixedFrontalViewGenerator
 from models.headset_encoders.tools import get_color_map
+from models.headset_encoders.ud import FixedFrontalViewGenerator
 
 
 class UniversalEncoderLoss(torch.nn.Module):

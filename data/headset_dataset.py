@@ -14,18 +14,18 @@ import io
 import os
 import pickle
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 from zipfile import ZipFile
-from typing import List, Dict, Optional, Tuple, Union
+
+from tqdm.auto import tqdm
 
 import cv2
 import numpy as np
 import pandas as pd
 import torch.utils.data
-from PIL import Image
-from tqdm.auto import tqdm
-from zipp import Path as ZipPath
-
 from data.utils import HeadsetCapture
+from PIL import Image
+from zipp import Path as ZipPath
 
 
 class SingleCaptureDataset(torch.utils.data.Dataset):

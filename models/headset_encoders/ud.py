@@ -6,11 +6,11 @@
 
 """Wrapper for universal avatar decoder that supports batch-based inference"""
 
-from typing import Any, Dict, List, Optional, Union, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Union
+
 import numpy as np
 import torch
 import torch.distributed as dist
-
 from models.headset_encoders.tools import rvec_to_R
 from utils import get_autoencoder, load_checkpoint
 
