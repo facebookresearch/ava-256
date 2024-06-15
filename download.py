@@ -59,7 +59,7 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
             "image/cam-left-mouth.zip",
             "image/cam-right-eye-atl-temporal.zip",
             "image/cam-right-mouth.zip",
-        ]
+        ],
     }
 )
 
