@@ -14,10 +14,10 @@ import platform
 import sys
 import time
 from collections import defaultdict
+from importlib import import_module
 from typing import Dict, Union
 
 import numpy as np
-import pandas as pd
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -25,19 +25,20 @@ import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
 from fvcore.common.config import CfgNode as CN
-from importlib import import_module
 from PIL import Image
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
+import pandas as pd
 from data.ava_dataset import none_collate_fn
-from data.headset_dataset import MultiCaptureDataset as HeadsetMultiCaptureDataset
+from data.headset_dataset import \
+    MultiCaptureDataset as HeadsetMultiCaptureDataset
 from models.headset_encoders.loss import UniversalEncoderLoss
-from models.headset_encoders.universal import UniversalEncoder
 from models.headset_encoders.ud import UDWrapper
+from models.headset_encoders.universal import UniversalEncoder
 from utils import load_checkpoint, tocuda, train_headset_csv_loader
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 sys.dont_write_bytecode = True
 ddp_train = import_module("ddp-train")
 
@@ -221,7 +222,7 @@ def main(rank, config, args):
         if data is None:
             continue
         iter_start_time = time.time()
-        
+
         # TODO: Add data augmentation here.
         cudadata: Dict[str, Union[torch.Tensor, int, str]] = tocuda(data)
         optim.zero_grad()

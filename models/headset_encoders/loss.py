@@ -8,12 +8,13 @@
 
 from typing import Any, Dict, List, Tuple, Union
 
-import cv2
-import imageio
 import numpy as np
 import torch
 import torch.nn.functional as F
 from einops import rearrange
+
+import cv2
+import imageio
 from models.headset_encoders.tools import get_color_map
 from models.headset_encoders.ud import FixedFrontalViewGenerator
 
