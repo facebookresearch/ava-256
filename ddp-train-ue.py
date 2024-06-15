@@ -18,6 +18,7 @@ from importlib import import_module
 from typing import Dict, Union
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -29,10 +30,8 @@ from PIL import Image
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
-import pandas as pd
 from data.ava_dataset import none_collate_fn
-from data.headset_dataset import \
-    MultiCaptureDataset as HeadsetMultiCaptureDataset
+from data.headset_dataset import MultiCaptureDataset as HeadsetMultiCaptureDataset
 from models.headset_encoders.loss import UniversalEncoderLoss
 from models.headset_encoders.ud import UDWrapper
 from models.headset_encoders.universal import UniversalEncoder
