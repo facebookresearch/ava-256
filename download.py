@@ -51,6 +51,15 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
             "uv_image/color_variance.txt",
             "uv_image/color.zip",
         ],
+        # NOTE(julieta) encoder data is a framelist and 5 cameras that we hardcode here
+        "encoder": [
+            "frame_list.csv",
+            "image/cam-cyclop.zip",
+            "image/cam-left-eye-atl-temporal.zip",
+            "image/cam-left-mouth.zip",
+            "image/cam-right-eye-atl-temporal.zip",
+            "image/cam-right-mouth.zip",
+        ]
     }
 )
 
@@ -201,6 +210,13 @@ def main():
                     asset_path = asset_paths[0].format(camera=camera)
                     from_url = dataset_path + capture_path + "/decoder/" + asset_path
                     to_path = output_dir / capture_path / "decoder" / asset_path
+                    links_and_paths.append((from_url, to_path))
+
+            elif assets == "encoder":
+                # Special case for encoder data
+                for asset_path in asset_paths:
+                    from_url = dataset_path + capture_path + "/encoder/" + asset_path
+                    to_path = output_dir / capture_path / "encoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 
             else:
