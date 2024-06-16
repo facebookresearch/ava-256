@@ -47,10 +47,11 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     plydata = PlyData.read(ply_bytes)
     vertices = plydata["vertex"].data
     vertices = np.array([list(element) for element in vertices])
+    
+    path = ZipPath(f"{base_dir}/head_pose/head_pose.zip", f"{frame_id:06d}.txt")
 
-    path = ZipPath(f"{base_dir}/head_pose/head_pose.zip", f"{frame_id:06d}.npy")
-
-    head_pose = np.load(io.BytesIO(path.read_bytes()))
+    headpose_bytes = path.read_bytes()
+    head_pose = np.loadtxt(io.BytesIO(headpose_bytes), dtype=np.float32)
 
     vertices = np.append(vertices, np.ones((vertices.shape[0], 1)), axis=1)
     vertices = np.matmul(head_pose, np.transpose(vertices))
@@ -77,15 +78,32 @@ def plot_mesh_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savef
     segments = np.array(list(zip(xs, ys))).swapaxes(1, 2)
     print(segments.shape)
     line_segments = mcoll.LineCollection(segments, colors="blue", linewidth=0.1)
-
+    
     ax.add_collection(line_segments)
+    
+    path = ZipPath(f"{base_dir}/keypoints_3d/keypoints_3d.zip", f"{frame_id:06d}.npy")
+
+    keypoints = np.load(io.BytesIO(path.read_bytes()))
+
+    print(f"Loaded keypoints of shape {keypoints.shape}")
+
+    keypoints = keypoints.reshape(-1, 6)
+
+    keypoints = np.append(keypoints[:, 1:4], np.ones((keypoints.shape[0], 1)), axis=1)
+
+    twod = np.dot(np.matmul(intrin, extrin), np.transpose(keypoints))
+    twod /= twod[-1]
+    twod /= 4  # images have been downscaled by 4
+
+    # plt.scatter([twod[0]], [twod[1]], s=6, color="y")
 
     plt.box(False)
 
     if savefig:
-        plt.savefig("viz/mesh_demo-{subject_id}+{camera_id}+{frame_id}.png")
+        plt.savefig(f"viz/mesh_demo-{subject_id}+{camera_id}+{frame_id}.png",bbox_inches='tight',pad_inches = 0)
     if showfig:
         plt.show()
+    plt.close()
 
     return plt
 
@@ -126,6 +144,7 @@ def plot_mesh_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90, roll
     ax.view_init(elev=elev, azim=azim, roll=roll)
 
     if savefig:
-        plt.savefig("viz/mesh3D_demo-{subject_id}+{frame_id}.png")
+        plt.savefig(f"viz/mesh3D_demo-{subject_id}+{frame_id}.png",bbox_inches='tight',pad_inches = 0)
     if showfig:
         plt.show()
+    plt.close()

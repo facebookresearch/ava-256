@@ -17,18 +17,28 @@ def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, 
 
     base_dir = f"{ava_dir}/{subject_id}/decoder/"
     path = ZipPath(
-        base_dir + "image/" + f"cam{camera_id}.zip",
-        f"cam{camera_id}/{int(frame_id):06d}.avif",
-    )
+                base_dir + "image/" + f"cam{camera_id}.zip",
+                f"cam{camera_id}/{int(frame_id):06d}.avif",
+            )
     img_bytes = path.read_bytes()
     image = Image.open(io.BytesIO(img_bytes))
 
+    # path = f"{base_dir}/camera_calibration.json"
+
+    # with open(path, "rb") as f:
+    #     camera_calibration = json.load(f)
+
+    # print(f"Loaded camera calibration")
+    # print(camera_calibration['KRT'])
+    
+    # for cam in camera_calibration['KRT']:
+    #     if cam['cameraId'] == camera_id:
+    #         params = camera_calibration[]
+    
     path = f"{base_dir}/camera_calibration.pkl"
 
     with open(path, "rb") as f:
         camera_calibration = pickle.load(f)
-
-    print(f"Loaded camera calibration")
 
     params = camera_calibration[camera_id]
 
@@ -54,14 +64,15 @@ def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, 
     ax.axis("off")
 
     plt.imshow(image)
-    plt.scatter([twod[0]], [twod[1]], s=10)
+    plt.scatter([twod[0]], [twod[1]], s=5)
 
     plt.box(False)
 
     if savefig:
-        plt.savefig("viz/keypoints_demo-{subject_id}+{camera_id}+{frame_id}.png")
+        plt.savefig(f"viz/keypoints_demo-{subject_id}+{camera_id}+{frame_id}.png",bbox_inches='tight',pad_inches = 0)
     if showfig:
         plt.show()
+    plt.close()
 
     return plt
 
@@ -86,6 +97,15 @@ def plot_keypoints_3d(ava_dir, subject_id, base_dir, frame_id, elev=50, azim=90,
     ax.view_init(elev=elev, azim=azim, roll=roll)
 
     if savefig:
-        plt.savefig("viz/keypoints3D_demo-{subject_id}+{frame_id}.png")
+        plt.savefig(f"viz/keypoints3D_demo-{subject_id}+{frame_id}.png",bbox_inches='tight',pad_inches = 0)
     if showfig:
         plt.show()
+    plt.close()
+    
+if __name__ == "__main__":
+    camera_id = '401031'
+    frame_id = 35665
+    ava_dir = "../AVA_dataset_8TB/"
+    subject_id = "20230801--1420--EJG940"
+    base_dir = f"{ava_dir}/{subject_id}/decoder/"
+    plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savefig=False, showfig=False)
