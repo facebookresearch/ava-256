@@ -127,7 +127,7 @@ def main():
     parser.add_argument("--output-dir", "-o", type=str, help=f"Directory to write the dataset to", required=True)
     parser.add_argument("--captures-file", type=str, default="256_ids.csv", help="CSV file with captures to download")
     parser.add_argument(
-        "--assets", type=str, default=["camera_calibration"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
+        "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")

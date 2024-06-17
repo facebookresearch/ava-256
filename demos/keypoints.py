@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import io
-import pickle
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +13,7 @@ from PIL import Image
 from zipp import Path as ZipPath
 
 
-def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, savefig=False, showfig=False):
+def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, intrin, extrin, savefig=False, showfig=False):
 
     base_dir = f"{ava_dir}/{subject_id}/decoder/"
     path = ZipPath(
@@ -22,34 +22,10 @@ def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, 
             )
     img_bytes = path.read_bytes()
     image = Image.open(io.BytesIO(img_bytes))
-
-    # path = f"{base_dir}/camera_calibration.json"
-
-    # with open(path, "rb") as f:
-    #     camera_calibration = json.load(f)
-
-    # print(f"Loaded camera calibration")
-    # print(camera_calibration['KRT'])
     
-    # for cam in camera_calibration['KRT']:
-    #     if cam['cameraId'] == camera_id:
-    #         params = camera_calibration[]
-    
-    path = f"{base_dir}/camera_calibration.pkl"
-
-    with open(path, "rb") as f:
-        camera_calibration = pickle.load(f)
-
-    params = camera_calibration[camera_id]
-
-    intrin = params["intrin"]
-    extrin = params["extrin"]
-
     path = ZipPath(f"{base_dir}/keypoints_3d/keypoints_3d.zip", f"{frame_id:06d}.npy")
 
     keypoints = np.load(io.BytesIO(path.read_bytes()))
-
-    print(f"Loaded keypoints of shape {keypoints.shape}")
 
     keypoints = keypoints.reshape(-1, 6)
 
@@ -62,9 +38,12 @@ def plot_keypoints_on_image(ava_dir, subject_id, base_dir, camera_id, frame_id, 
     fig, ax = plt.subplots()
     fig.patch.set_visible(False)
     ax.axis("off")
+    
+    ax.set_xlim(0, 666)
+    ax.set_ylim(1023, 0)
 
     plt.imshow(image)
-    plt.scatter([twod[0]], [twod[1]], s=5)
+    plt.scatter([twod[0]], [twod[1]], s=1, c="yellow")
 
     plt.box(False)
 
