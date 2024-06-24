@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     output_set = set(train_params.output_set)
 
-    for i in tqdm(range(len(driver_dataset.framelist.values.tolist())-1), desc="Rendering X-id frames"):
+    for i in tqdm(range(len(driver_dataset.framelist.values.tolist()) - 1), desc="Rendering X-id frames"):
         xid_eval(
             ae,
             driver_dataiter,
@@ -154,6 +154,5 @@ if __name__ == "__main__":
             indices_subjects=args.driven_id_indices,
             training=False,
         )
-
 
     print(f"Done! Saved {i} images to {output_dir}")
