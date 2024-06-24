@@ -11,13 +11,13 @@ from typing import Dict, Union
 import einops
 import torch
 import yaml
+from fvcore.common.config import CfgNode as CN
 from tqdm import tqdm
 
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
-from fvcore.common.config import CfgNode as CN
 from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader, xid_eval
 
 if __name__ == "__main__":
@@ -28,12 +28,12 @@ if __name__ == "__main__":
 
     # Cross ID visualization configuration
     parser.add_argument("--driver-id", type=str, default="20230405--1635--AAN112", help="id of the driver avatar")
-    parser.add_argument("--driven-id-indices", type=list, default=[1,2,3], help="id of the driven avatar")
+    parser.add_argument("--driven-id-indices", type=list, default=[1, 2, 3], help="id of the driven avatar")
     parser.add_argument("--camera-id", type=str, default="401031", help="render camera id")
     parser.add_argument(
         "--segment-id",
         type=str,
-        default="EXP_jaw005",
+        default="SEN_all_your_wishful_thinking_wont_change_that",
         help="segment to render; render all available frames if None",
     )
     parser.add_argument("--opts", default=[], type=str, nargs="+")
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     del dataset
 
     # Grab driven normalization stats
-    for dataset in [driver_dataset]: #,driven_dataset]:
+    for dataset in [driver_dataset]:  # ,driven_dataset]:
         dataset.texmean = texmean
         dataset.texstd = texstd
         dataset.vertmean = vertmean
@@ -124,11 +124,11 @@ if __name__ == "__main__":
         num_workers=numworkers,
         collate_fn=none_collate_fn,
     )
-    
+
     driver_dataiter = iter(driver_loader)
 
     it = 0
-    
+
     # Store neut avgtex and neut vert from all ids for x-id check
     all_neut_avgtex_vert = []
 
@@ -138,13 +138,26 @@ if __name__ == "__main__":
         neut_avgtex = (neut_avgtex - dataset.texmean) / dataset.texstd
         neut_verts = (neut_vert - dataset.vertmean) / dataset.vertstd
         all_neut_avgtex_vert.append({"neut_avgtex": torch.tensor(neut_avgtex), "neut_verts": torch.tensor(neut_verts)})
-    
+
     output_set = set(train_params.output_set)
     it = 0
 
-    while driver_dataiter:
-        xid_eval(ae, driver_dataiter, all_neut_avgtex_vert, config, output_set, output_dir, 0, it, indices_subjects=args.driven_id_indices)
-        it += 1
-        
-    
+    while next(driver_dataiter):
+        try:
+            xid_eval(
+                ae,
+                driver_dataiter,
+                all_neut_avgtex_vert,
+                config,
+                output_set,
+                output_dir,
+                0,
+                it,
+                indices_subjects=args.driven_id_indices,
+                training=False,
+            )
+            it += 1
+        except:
+            break
+
     print(f"Done! Saved {it} images to {output_dir}")

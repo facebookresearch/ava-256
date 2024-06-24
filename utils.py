@@ -5,25 +5,25 @@
 # LICENSE file in the root directory of this source tree.
 
 import json
+import random
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, TextIO, Tuple, Union
 
 import einops
 import numpy as np
 import pandas as pd
-import torch as th
-from PIL import Image
-import time
-import random
 import torch
-
-from data.utils import MugsyCapture
+import torch as th
 from igl import point_mesh_squared_distance
+from PIL import Image
 
 # rtree and KDTree required by trimesh, though not explicitly in its deps for leanness
 # from rtree import Rtree  # noqa
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
+
+from data.utils import MugsyCapture
 
 
 def closest_point(mesh, points):
@@ -435,7 +435,18 @@ def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[Mu
     return train_captures, train_dirs
 
 
-def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum, indices_subjects=None):
+def xid_eval(
+    model,
+    driver_dataiter,
+    all_neut_avgtex_vert,
+    config,
+    output_set,
+    outpath,
+    rank,
+    iternum,
+    indices_subjects=None,
+    training=True,
+):
     starttime = time.time()
 
     if indices_subjects == None:
@@ -519,4 +530,5 @@ def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, o
     if rank == 0:
         render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
 
-    print(f"Cross ID viz took {time.time() - starttime}")
+    if training:
+        print(f"Cross ID viz took {time.time() - starttime}")
