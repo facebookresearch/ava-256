@@ -20,6 +20,7 @@ from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
 from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader, xid_eval
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/aeparams_300000.pt", help="checkpoint location")

@@ -90,13 +90,13 @@ Datasheet in the format of "Datasheets for datasets" as described in
     │      ├── color_variance.txt
     │        └── color.zip
     └── encoder
+        ├── frame_list.csv
         └── image
             ├── cam-cyclop.zip
             ├── cam-left-eye-atl-temporal.zip
             ├── cam-left-mouth.zip
             ├── cam-right-eye-atl-temporal.zip
-            ├── cam-right-mouth.zip
-            └── frame_list.csv
+            └── cam-right-mouth.zip
     ```
 
     The `decoder` folder contains data and assets for high quality avatar reconstruction.
@@ -148,7 +148,7 @@ Datasheet in the format of "Datasheets for datasets" as described in
 
     * `encoder/frame_list.csv` is a csv with `N_FRAMES` rows (1 per frame) and two columns: `seg_id` and `frame_id`;
       the former is the name of the segment, and the latter is the frame number. `N_FRAMES` is the number of frames in the encoder capture.
-    * `encoder/cam-XX.zip`: are 5 zip files corresponding to the 5 infrarred cameras of a Quest Pro.
+    * `encoder/image/cam-XX.zip`: are 5 zip files corresponding to the 5 infrarred cameras of a Quest Pro.
       Each zip file has `N_FRAMES` images with format `{frame_id:06d}.avif`, following `frame_list.csv`.
 
 
