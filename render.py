@@ -18,8 +18,7 @@ from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
 from data.ava_dataset import none_collate_fn
 from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
-from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader, xid_eval
-
+from utils import get_autoencoder, load_checkpoint, train_csv_loader, xid_eval
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")
@@ -141,24 +140,20 @@ if __name__ == "__main__":
         all_neut_avgtex_vert.append({"neut_avgtex": torch.tensor(neut_avgtex), "neut_verts": torch.tensor(neut_verts)})
 
     output_set = set(train_params.output_set)
-    it = 0
 
-    while next(driver_dataiter):
-        try:
-            xid_eval(
-                ae,
-                driver_dataiter,
-                all_neut_avgtex_vert,
-                config,
-                output_set,
-                output_dir,
-                0,
-                it,
-                indices_subjects=args.driven_id_indices,
-                training=False,
-            )
-            it += 1
-        except:
-            break
+    for i in tqdm(range(len(driver_dataset.framelist.values.tolist())-1), desc="Rendering X-id frames"):
+        xid_eval(
+            ae,
+            driver_dataiter,
+            all_neut_avgtex_vert,
+            config,
+            output_set,
+            output_dir,
+            0,
+            i,
+            indices_subjects=args.driven_id_indices,
+            training=False,
+        )
 
-    print(f"Done! Saved {it} images to {output_dir}")
+
+    print(f"Done! Saved {i} images to {output_dir}")
