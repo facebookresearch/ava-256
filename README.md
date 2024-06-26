@@ -17,7 +17,7 @@ cd extensions/utils
 make
 ```
 
-## Downloading the data
+## Data
 We provide a handy multithreaded script to download the dataset from AWS:
 
 ```bash
@@ -27,6 +27,21 @@ Will download a single capture to `<output-dir>`, using 8 threads.
 You may increase `n` to download more captures (up to 256), and `-j` to increase the number of threads.
 Note that, by default, this will download the `4TB` dataset. If you want longer or higher
 quality data (at the expense of more storage), you may pass `--size {8,16,32}TB`.
+
+### Decoder
+
+For every subject, the decoder data includes 80 camera views with camera calibration, head pose in world coordinates,
+registered mesh, 3d keypoints and semantic segmentations. 
+
+https://github.com/facebookresearch/ava-256/assets/3733964/03864d10-1613-4041-bc1d-0584769c2764
+
+### Encoder
+
+For every subject, the encoder data consists of 5 infrared camera views captured from a Quest Pro.
+
+https://github.com/facebookresearch/ava-256/assets/3733964/0f49b797-f44e-47af-88d9-626d67c8d189
+
+For more details on the data format, see Question 4 under the [Composition Section](https://github.com/facebookresearch/ava-256/blob/main/DATASHEET.md#composition) of our datasheet.
 
 ## Train
 To train a simple model on a standalone machine you can
