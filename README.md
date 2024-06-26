@@ -71,5 +71,13 @@ To run visualization of a trained model, you can run
 python render.py
 ```
 
+This should create a visualization showcasing the consistent expression space of the decoder:
+
+
+
+https://github.com/facebookresearch/ava-256/assets/3733964/41613355-00f1-479e-9c39-c8480192bbaa
+
+
+
 ## Tests
 You can run tests with `python -m pytest tests/`
