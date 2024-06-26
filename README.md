@@ -2,7 +2,11 @@
 
 ### Part of Codec Avatar Studio
 
-Ava-256 is designed to enable universal face encoders and decoders.
+We provide 
+* 256 paired high-resolution dome and headset captures
+* Code to build universal face encoders and decoders
+
+![256_subjects](https://github.com/facebookresearch/ava-256/assets/3733964/622eb5af-6375-4f24-830d-a0025d7a7d23)
 
 ## Compiling extensions
 We need to compile the CUDA raymarcher and some utilities. This can be done with
