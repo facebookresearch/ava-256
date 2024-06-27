@@ -1,6 +1,6 @@
 # Ava-256: Universal Encoders and Decoders
 
-### Part of Codec Avatar Studio
+### Together with [Goliath](https://github.com/facebookresearch/goliath), part of Codec Avatar Studio
 
 We provide 
 * 256 paired high-resolution dome and headset captures
