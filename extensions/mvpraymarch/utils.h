@@ -682,17 +682,6 @@ __forceinline__ __device__ bool ray_aabb_hit_ird(float3 p0, float3 p1, float3 ra
     float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
   
     return max_component(tmin) <= min_component(tmax);
-
-}
-__forceinline__ __device__ void ray_aabb_hit_ird_tminmax(float3 p0, float3 p1,
-        float3 raypos, float3 ird, float &otmin, float &otmax) {
-    float3 t0 = (p0 - raypos) * ird;
-    float3 t1 = (p1 - raypos) * ird;
-    float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
-    tmin = math::min(t0,t1);
-    tmax = math::max(t0,t1);
-    otmin = max_component(tmin);
-    otmax = min_component(tmax);
 }
 
 inline  __device__ bool aabb_intersect(float3 p0, float3 p1, float3 r0, float3 rd, float &tmin, float &tmax) {
