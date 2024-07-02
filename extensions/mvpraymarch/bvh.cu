@@ -30,9 +30,9 @@ __device__ unsigned int expand_bits(unsigned int v) {
 // Calculates a 30-bit Morton code for the
 // given 3D point located within the unit cube [0,1].
 __device__ unsigned int morton3D(float x, float y, float z) {
-    x = math::min(math::max(x * 1024.0f, 0.0f), 1023.0f);
-    y = math::min(math::max(y * 1024.0f, 0.0f), 1023.0f);
-    z = math::min(math::max(z * 1024.0f, 0.0f), 1023.0f);
+    x = fminf(fmaxf(x * 1024.0f, 0.0f), 1023.0f);
+    y = fminf(fmaxf(y * 1024.0f, 0.0f), 1023.0f);
+    z = fminf(fmaxf(z * 1024.0f, 0.0f), 1023.0f);
     unsigned int xx = expand_bits((unsigned int)x);
     unsigned int yy = expand_bits((unsigned int)y);
     unsigned int zz = expand_bits((unsigned int)z);

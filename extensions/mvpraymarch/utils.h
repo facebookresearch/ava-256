@@ -657,11 +657,11 @@ struct GridSamplerChlast {
 
 
 inline __host__ __device__ float min_component(float3 a) {
-    return math::min(math::min(a.x,a.y),a.z);
+    return fminf(fminf(a.x,a.y),a.z);
 }
 
 inline __host__ __device__ float max_component(float3 a) {
-    return math::max(math::max(a.x,a.y),a.z);
+    return fmaxf(fmaxf(a.x,a.y),a.z);
 }
 
  inline __host__ __device__ float3 abs(float3 a) {
@@ -767,8 +767,8 @@ static __forceinline__ __device__ void ray_subset_fixedbvh(
 
                 if (intersection) {
                     // hit
-                    rtminmax.x = math::min(rtminmax.x, trmin);
-                    rtminmax.y = math::max(rtminmax.y, trmax);
+                    rtminmax.x = fminf(rtminmax.x, trmin);
+                    rtminmax.y = fmaxf(rtminmax.y, trmax);
                 }
 
                 if (sync) {
