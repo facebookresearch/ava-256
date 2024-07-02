@@ -1,6 +1,6 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // All rights reserved.
-// 
+//
 // This source code is licensed under the license found in the
 // LICENSE file in the root directory of this source tree.
 
@@ -15,6 +15,8 @@
 
 #include "primtransf.h"
 
+using namespace math;
+
 // Expands a 10-bit integer into 30 bits
 // by inserting 2 zeros after each bit.
 __device__ unsigned int expand_bits(unsigned int v) {
@@ -28,9 +30,9 @@ __device__ unsigned int expand_bits(unsigned int v) {
 // Calculates a 30-bit Morton code for the
 // given 3D point located within the unit cube [0,1].
 __device__ unsigned int morton3D(float x, float y, float z) {
-    x = fminf(fmaxf(x * 1024.0f, 0.0f), 1023.0f);
-    y = fminf(fmaxf(y * 1024.0f, 0.0f), 1023.0f);
-    z = fminf(fmaxf(z * 1024.0f, 0.0f), 1023.0f);
+    x = math::min(math::max(x * 1024.0f, 0.0f), 1023.0f);
+    y = math::min(math::max(y * 1024.0f, 0.0f), 1023.0f);
+    z = math::min(math::max(z * 1024.0f, 0.0f), 1023.0f);
     unsigned int xx = expand_bits((unsigned int)x);
     unsigned int yy = expand_bits((unsigned int)y);
     unsigned int zz = expand_bits((unsigned int)z);
@@ -185,8 +187,8 @@ __global__ void compute_aabb_kernel(
             float3 raabbmin = nodeaabb[n * (K + K - 1) * 2 + children.y * 2 + 0];
             float3 raabbmax = nodeaabb[n * (K + K - 1) * 2 + children.y * 2 + 1];
 
-            float3 aabbmin = fminf(laabbmin, raabbmin);
-            float3 aabbmax = fmaxf(laabbmax, raabbmax);
+            float3 aabbmin = math::min(laabbmin, raabbmin);
+            float3 aabbmax = math::max(laabbmax, raabbmax);
 
             nodeaabb[n * (K + K - 1) * 2 + node * 2 + 0] = aabbmin;
             nodeaabb[n * (K + K - 1) * 2 + node * 2 + 1] = aabbmax;
@@ -274,7 +276,7 @@ void compute_aabb_cuda(
     std::map<int, std::function<void(dim3, dim3, cudaStream_t, int, int, std::shared_ptr<PrimTransfDataBase>, int*, int2*, int*, float3*, int*)>> dispatcher = {
       { 0, make_cudacall(compute_aabb_kernel<PrimTransfSRT>) }
     };
-    
+
     auto iter = dispatcher.find(min(0, algorithm));
     if (iter != dispatcher.end()) {
         (iter->second)(

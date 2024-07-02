@@ -14,6 +14,8 @@
 
 #include "helper_math.h"
 
+using namespace math;
+
 static __forceinline__ __device__ float clock_diff(long long int end, long long int start) {
     long long int max_clock = std::numeric_limits<long long int>::max();
     return (end<start? (end + float(max_clock-start)) : float(end-start));
@@ -655,11 +657,11 @@ struct GridSamplerChlast {
 
 
 inline __host__ __device__ float min_component(float3 a) {
-    return fminf(fminf(a.x,a.y),a.z);
+    return math::min(math::min(a.x,a.y),a.z);
 }
 
 inline __host__ __device__ float max_component(float3 a) {
-    return fmaxf(fmaxf(a.x,a.y),a.z);
+    return math::max(math::max(a.x,a.y),a.z);
 }
 
  inline __host__ __device__ float3 abs(float3 a) {
@@ -669,7 +671,7 @@ inline __host__ __device__ float max_component(float3 a) {
 __forceinline__ __device__ bool ray_aabb_hit(float3 p0, float3 p1, float3 raypos, float3 raydir) {
     float3 t0 = (p0 - raypos) / raydir;
     float3 t1 = (p1 - raypos) / raydir;
-    float3 tmin = fminf(t0,t1), tmax = fmaxf(t0,t1);
+    float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
   
     return max_component(tmin) <= min_component(tmax);
 }
@@ -677,7 +679,7 @@ __forceinline__ __device__ bool ray_aabb_hit(float3 p0, float3 p1, float3 raypos
 __forceinline__ __device__ bool ray_aabb_hit_ird(float3 p0, float3 p1, float3 raypos, float3 ird) {
     float3 t0 = (p0 - raypos) * ird;
     float3 t1 = (p1 - raypos) * ird;
-    float3 tmin = fminf(t0,t1), tmax = fmaxf(t0,t1);
+    float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
   
     return max_component(tmin) <= min_component(tmax);
 
@@ -686,9 +688,9 @@ __forceinline__ __device__ void ray_aabb_hit_ird_tminmax(float3 p0, float3 p1,
         float3 raypos, float3 ird, float &otmin, float &otmax) {
     float3 t0 = (p0 - raypos) * ird;
     float3 t1 = (p1 - raypos) * ird;
-    float3 tmin = fminf(t0,t1), tmax = fmaxf(t0,t1);
-    tmin = fminf(t0,t1);
-    tmax = fmaxf(t0,t1);
+    float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
+    tmin = math::min(t0,t1);
+    tmax = math::max(t0,t1);
     otmin = max_component(tmin);
     otmax = min_component(tmax);
 }
@@ -756,7 +758,7 @@ static __forceinline__ __device__ void ray_subset_fixedbvh(
                 float3 ird = 1.0f/rd;
                 float3 t0 = (-1.f - r0) * ird;
                 float3 t1 = (1.f - r0) * ird;
-                float3 tmin = fminf(t0,t1), tmax = fmaxf(t0,t1);
+                float3 tmin = math::min(t0,t1), tmax = math::max(t0,t1);
 
                 float trmin = max_component(tmin);
                 float trmax = min_component(tmax);
@@ -765,8 +767,8 @@ static __forceinline__ __device__ void ray_subset_fixedbvh(
 
                 if (intersection) {
                     // hit
-                    rtminmax.x = fminf(rtminmax.x, trmin);
-                    rtminmax.y = fmaxf(rtminmax.y, trmax);
+                    rtminmax.x = math::min(rtminmax.x, trmin);
+                    rtminmax.y = math::max(rtminmax.y, trmax);
                 }
 
                 if (sync) {
