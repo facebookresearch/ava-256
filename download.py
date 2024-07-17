@@ -225,7 +225,6 @@ def main():
                     to_path = output_dir / capture_path / "encoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 
-
             elif assets == "checkpoints":
                 # NOTE(julieta) checkpoints are per-dataset, not per-capture
                 continue
@@ -238,7 +237,6 @@ def main():
                     to_path = output_dir / capture_path / "decoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 
-
     # Assets for the entire dataset, not per capture, such as checkpoints
     for assets, asset_paths in args.assets.items():
         if assets == "checkpoints":
@@ -248,7 +246,6 @@ def main():
                 from_url = dataset_path + "checkpoints/" + asset_path
                 to_path = output_dir / "checkpoints" / asset_path
                 links_and_paths.append((from_url, to_path))
-
 
     # Done creating links, donwload everything
     total_links = len(links_and_paths)
