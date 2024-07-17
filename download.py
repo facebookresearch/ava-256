@@ -54,6 +54,8 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         # NOTE(julieta) encoder data is a framelist and 5 cameras that we hardcode here
         "encoder": [
             "frame_list.csv",
+            "encodings_framelist.csv",
+            "encodings_gt.pt",
             "image/cam-cyclop.zip",
             "image/cam-left-eye-atl-temporal.zip",
             "image/cam-left-mouth.zip",
