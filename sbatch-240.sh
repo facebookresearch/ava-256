@@ -23,7 +23,8 @@ export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 export MASTER_PORT=$(expr 10000 + $(echo -n $SLURM_JOBID | tail -c 4))
 
 cd /home/$USER/rsc/ava-256/ || exit 1
-srun python ddp-train.py configs/config-240z.yaml \
+srun python ddp-train.py configs/config-240.yaml \
 --masteraddress ${MASTER_ADDR} \
 --masterport ${MASTER_PORT} \
---progress.output_path run-240/${SLURM_ARRAY_TASK_ID}/
+--progress.output_path run-240/${SLURM_ARRAY_TASK_ID}/ \
+--progress.tensorboard.output_path run-240/${SLURM_ARRAY_TASK_ID}/tb/
