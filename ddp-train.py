@@ -71,7 +71,6 @@ def gen_optimizer(
     rank: int,
     learning_rate: float,
     tensorboard_logger=None,
-    worldsize: int = 1,
 ):
     params = filter(lambda x: x.requires_grad, itertools.chain(net.parameters()))
     if optim_type == "adam":
@@ -86,7 +85,6 @@ def gen_optimizer(
     if tensorboard_logger and rank == 0:
         tb_hyperparams = {
             "minibatchsize": batchsize,
-            "globalbatchsize": batchsize * worldsize,
             "learningrate": learning_rate,
             "optimizer": optim_type,
         }
@@ -334,7 +332,6 @@ def main(rank, config, args):
         rank,
         initial_lr,
         tensorboard_logger,
-        args.worldsize,
     )
 
     scheduler = lr_scheduler.StepLR(optim, step_size=train_params.lr_scheduler_iter, gamma=train_params.gamma)
@@ -577,7 +574,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train an autoencoder")
 
     # Can overwrite some of these parameter to, eg, train over multiple hosts
-    parser.add_argument("--worldsize", type=int, default=1, help="the number of processes for distributed training")
     parser.add_argument("--masteraddress", type=str, default="localhost", help="master node address (hostname or ip)")
     parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
     parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
