@@ -296,7 +296,7 @@ class SingleCaptureDataset(torch.utils.data.Dataset):
                 raise ValueError(f"Some of fetched data is None for {frame_id}-{camera_id}")
 
         except Exception as e:
-            logger.info(f"Error loading data: {e}")
+            logger.info(f"Error loading {e}")
             # logger.exception(e)
             return None
 

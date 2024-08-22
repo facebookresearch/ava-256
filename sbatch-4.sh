@@ -15,13 +15,12 @@
 source /uca/conda-envs/activate-latest
 
 export GLOG_minloglevel=2
-export NCCL_ASYNC_ERROR_HANDLING=1
 export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache
 
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 export MASTER_PORT=$(expr 10000 + $(echo -n $SLURM_JOBID | tail -c 4))
 
-# export NCCL_DEBUG=INFO
-
 cd /home/$USER/rsc/ava-256/ || exit 1
-srun python ddp-train.py --masteraddress ${MASTER_ADDR} --masterport ${MASTER_PORT} --config configs/config-4.yaml
+srun python ddp-train.py configs/config-4.yaml \
+--masteraddress ${MASTER_ADDR} \
+--masterport ${MASTER_PORT}

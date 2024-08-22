@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=1-1
+#SBATCH --array=1-2
 #SBATCH --partition=learn
 #SBATCH --time=7-00:00:00
 #SBATCH --job-name=AVA256_TRAIN
@@ -16,15 +16,14 @@
 source /uca/conda-envs/activate-latest
 
 export GLOG_minloglevel=2
-export NCCL_ASYNC_ERROR_HANDLING=1
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache
-
-echo $SLURM_JOBID
 
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 export MASTER_PORT=$(expr 10000 + $(echo -n $SLURM_JOBID | tail -c 4))
 
-export NCCL_DEBUG=INFO
-
 cd /home/$USER/rsc/ava-256/ || exit 1
-srun python ddp-train.py --masteraddress ${MASTER_ADDR} --masterport ${MASTER_PORT} --config configs/config-240.yaml
+srun python ddp-train.py configs/config-240z.yaml \
+--masteraddress ${MASTER_ADDR} \
+--masterport ${MASTER_PORT} \
+--progress.output_path run-240/${SLURM_ARRAY_TASK_ID}/

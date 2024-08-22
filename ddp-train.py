@@ -16,7 +16,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 import einops
 import numpy as np
@@ -26,7 +26,7 @@ import torch.multiprocessing as mp
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
-from fvcore.common.config import CfgNode as CN
+from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -490,7 +490,7 @@ def main(rank, config, args):
 
             del cudadata
 
-            if not args.nodisplayloss:
+            if not config.progress.nodisplayloss:
                 logging.info(
                     "Rank {:>3d} Iteration {} loss = {:.4f}, ".format(args.world_rank, iternum, float(loss.item()))
                     + ", ".join(
@@ -563,40 +563,27 @@ def main(rank, config, args):
 
             iternum += 1
 
-    # cleanup
     cleanup()
 
 
 if __name__ == "__main__":
     __spec__ = None  # to use ipdb
 
-    # parse arguments
-    parser = argparse.ArgumentParser(description="Train an autoencoder")
+    config_path: str = sys.argv[1]
+    console_commands: List[str] = sys.argv[2:]
 
-    # Can overwrite some of these parameter to, eg, train over multiple hosts
-    parser.add_argument("--masteraddress", type=str, default="localhost", help="master node address (hostname or ip)")
-    parser.add_argument("--masterport", type=str, default="43321", help="master node network port")
-    parser.add_argument("--nodisplayloss", action="store_true", help="logging loss value every iteration")
-
-    # TODO(julieta) get rid of this, there should only be one dataset in the OSS release
-    parser.add_argument("--idfilepath", type=str, default=None, help="file of id list for training or evaluation")
-    parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
-    parser.add_argument("--opts", default=[], type=str, nargs="+")
-
-    args = parser.parse_args()
-
-    with open(args.config, "r") as file:
-        config = CN(yaml.load(file, Loader=yaml.UnsafeLoader))
-
-    config.merge_from_list(args.opts)
+    config = OmegaConf.load(config_path)
+    config_cli = OmegaConf.from_cli(args_list=console_commands)
+    if config_cli:
+        logging.info("Overriding with the following args values:")
+        logging.info(f"{OmegaConf.to_yaml(config_cli)}")
+        config = OmegaConf.merge(config, config_cli)
 
     # Validate config
     if config.progress.cross_id:
         assert (
             config.progress.cross_id_n_subjects < config.train.nids
         ), "number of subjects for cross id must be < number of subjects in the dataset"
-
-    train_params = config.train
 
     # Update worldsize with number of GPUs
     if torch.cuda.is_available():
@@ -605,6 +592,12 @@ if __name__ == "__main__":
     else:
         ngpus_per_node = 1
 
+    args = OmegaConf.create({
+        "masterport": "43321",
+        "masteraddress": "localhost",
+    })
+    args = OmegaConf.merge(args, config_cli)
+    
     world_rank = os.getenv("SLURM_PROCID", None)
     world_size = os.getenv("SLURM_NTASKS", None)
 
@@ -613,7 +606,6 @@ if __name__ == "__main__":
         args.world_rank = None
         args.world_size = ngpus_per_node
         mp.spawn(main, args=(config, args), nprocs=ngpus_per_node)
-        # main(0, config, args)
     else:
         # Running things on a slurm cluster with sbatch sbatch.sh
         args.world_rank = int(world_rank) * ngpus_per_node
