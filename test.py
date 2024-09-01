@@ -233,7 +233,7 @@ def test(config):
 
             # Add to mean dict
             for name, value in losses.items():
-                [name].append(value)
+                loss_means[name].append(value)
 
             # compute final loss
             loss = sum(
@@ -285,10 +285,10 @@ def test(config):
             
             if i >= test_params.max_iters:
                 
-                for name, value in _loss_dict.items():
+                for name, value in loss_means.items():
                     loss_means[name] = np.mean(value)
 
-                print(loss_means)
+                logging.info(loss_means)
                 print()
 
                 break
