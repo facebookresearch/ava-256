@@ -1,19 +1,19 @@
 device: "cuda"
 train:
   dataset_dir: "/uca/julieta/oss/release/4TB/"  # where the dataset is
-  data_csv: "256_ids.csv"                       # csv of identities to use
-  nids: 4                                       # number of identities to train on
+  data_csv: "240_train.csv"                     # csv of identities to use
+  nids: 240                                     # number of identities to train on
   # checkpoint: "checkpoints/aeparams.pt"       # checkpoint to resume training from
-  # checkpoint: ""
-  checkpoint: "/checkpoint/avatar/julietamartinez/ava-256/checkpoints/4ids/aeparams_300000.pt"
+  checkpoint: ""
+  # checkpoint: "/checkpoint/avatar/julietamartinez/ava-256/checkpoints/256ids/aeparams_640000.pt"
   maxiter: 10_000_000                           # maximum number of iterations to train for
   num_epochs: 10                                # number of epochs to train for
   init_learning_rate: 2.0e-4                    # learning rate
   lr_scheduler_iter: 10_000                     # iterations to schedule learning
   gamma: 1.4
   downsample: 8                                 # image downsampling factor at data loader, 1 is no downsampling
-  num_workers: 0                                # number of workers for each dataloader
-  batchsize: 1                                  # batch size per per gpu
+  num_workers: 8                                # number of workers for each dataloader
+  batchsize: 4                                  # batch size per per gpu
   clip: 1.0                                     # gradient clipping
   losses:                                       # weights for loss terms
     irgbl1: 1.0                                 # l1 image loss, the most important
@@ -22,12 +22,27 @@ train:
     primvolsum: 0.01                            # penalty on the volume of the primitives (keeps them small and sharp)
   output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model
 
-output_path: "run-4/"
+output_path: "run-240/2/"
 progress:
   nodisplayloss: False
-  output_path: ${output_path}                   # output path where the progress is saved
+  output_path: "${output_path}"                 # output path where the progress is saved
   cross_id: True                                # wheter to visualize cross-id animation during validation
   cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
     logdir: "tb/"                               # directory to store tensorboard outputs
+
+test:
+  dataset_dir: "/uca/julieta/oss/release/4TB/"  # where the dataset is
+  data_csv: "16_val.csv"                     # csv of identities to use
+  nids: 16                                     # number of identities to train on
+  checkpoint: "/home/julietamartinez/rsc/ava-256/run-240/2/aeparams_1280000.pt"
+  downsample: 8                                 # image downsampling factor at data loader, 1 is no downsampling
+  num_workers: 0                                # number of workers for each dataloader
+  batchsize: 1                                  # batch size per per gpu
+  max_iters: 100                                 #
+  losses:                                       # weights for loss terms
+    irgbl1: 1.0                                 # l1 image loss, the most important
+    vertl1: 1.0                                 # l1 loss on vertices for geometry branch
+    psnr: 1.0                                   # psnr loss, for validation
+  output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model

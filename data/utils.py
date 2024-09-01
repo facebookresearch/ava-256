@@ -73,6 +73,7 @@ def get_framelist_neuttex_and_neutvert(
             else:
                 logging.info(f"{verts_path} does not exist")
                 verts = None
+                continue
 
             avgtex_path = ZipPath(avgtex_zip, at=f"color/{int(neut_frame):06d}.avif")
             if avgtex_path.exists():
@@ -83,6 +84,7 @@ def get_framelist_neuttex_and_neutvert(
             else:
                 logging.info(f"{avgtex_path} does not exist")
                 tex = None
+                continue
 
             # NOTE(julieta) only load one since this might be causing OOM issues
             if tex is not None and verts is not None:

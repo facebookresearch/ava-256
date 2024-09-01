@@ -22,10 +22,12 @@ train:
     primvolsum: 0.01                            # penalty on the volume of the primitives (keeps them small and sharp)
   output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model
 
+output_path: "run-256/"
 progress:
-  output_path: "run-256/"                       # output path where the progress is saved
+  nodisplayloss: False
+  output_path: "${output_path}"                 # output path where the progress is saved
   cross_id: True                                # wheter to visualize cross-id animation during validation
   cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
-    logdir: "log-256/"                          # directory to store tensorboard outputs
+    logdir: "tb/"            # directory to store tensorboard outputs
