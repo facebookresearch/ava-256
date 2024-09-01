@@ -30,4 +30,4 @@ progress:
   cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
-    logdir: "${output_path}/tb/"                # directory to store tensorboard outputs
+    logdir: "tb/"                               # directory to store tensorboard outputs

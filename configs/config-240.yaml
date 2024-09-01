@@ -22,12 +22,27 @@ train:
     primvolsum: 0.01                            # penalty on the volume of the primitives (keeps them small and sharp)
   output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model
 
-output_path: "run-240/"
+output_path: "run-240/2/"
 progress:
   nodisplayloss: False
-  output_path: "${output_path}"                       # output path where the progress is saved
+  output_path: "${output_path}"                 # output path where the progress is saved
   cross_id: True                                # wheter to visualize cross-id animation during validation
   cross_id_n_subjects: 3                        # number of subjects to visualize during cross-id training
   tensorboard:                                  # tensorboard parameters
     log_freq: 10                                # tensorboard logging frequency, in training iterations
-    logdir: "${output_path}/tb"                          # directory to store tensorboard outputs
+    logdir: "tb/"                               # directory to store tensorboard outputs
+
+test:
+  dataset_dir: "/uca/julieta/oss/release/4TB/"  # where the dataset is
+  data_csv: "16_val.csv"                     # csv of identities to use
+  nids: 16                                     # number of identities to train on
+  checkpoint: "/home/julietamartinez/rsc/ava-256/run-240/2/aeparams_1280000.pt"
+  downsample: 8                                 # image downsampling factor at data loader, 1 is no downsampling
+  num_workers: 0                                # number of workers for each dataloader
+  batchsize: 1                                  # batch size per per gpu
+  max_iters: 100                                 #
+  losses:                                       # weights for loss terms
+    irgbl1: 1.0                                 # l1 image loss, the most important
+    vertl1: 1.0                                 # l1 loss on vertices for geometry branch
+    psnr: 1.0                                   # psnr loss, for validation
+  output_set: ["irgbrec", "sampledimg", "primscale"] # output of the main model

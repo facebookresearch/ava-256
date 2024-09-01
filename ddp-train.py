@@ -6,7 +6,6 @@
 
 """Train an autoencoder."""
 
-import argparse
 import itertools
 import logging
 import os
@@ -97,17 +96,11 @@ def setup(local_rank, world_rank, world_size, master_address: str, master_port: 
     logging.info(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
     print(f"{local_rank=} {world_rank=} {world_size=} {master_address=}, {master_port=}")
 
-    # # devices = os.getenv("CUDA_VISIBLE_DEVICES", None)
-    # print(f"{devices=}")
-
     # if local_rank is not None:
     torch.cuda.set_device(local_rank)
 
-    # if world_rank is None:
-    #     world_rank = local_rank
-
     os.environ["MASTER_ADDR"] = master_address
-    os.environ["MASTER_PORT"] = master_port
+    os.environ["MASTER_PORT"] = str(master_port)
     dist.init_process_group("nccl", rank=world_rank, world_size=world_size)
 
 
@@ -297,8 +290,6 @@ def main(rank, config, args):
     starttime = time.time()
     assetpath = Path(__file__).parent / "assets"
     ae = get_autoencoder(dataset, assetpath=str(assetpath))
-
-    # device = torch.cuda.current_device()
 
     if train_params.checkpoint:
         logging.info(f"Loading checkpoint from {train_params.checkpoint}")
@@ -579,6 +570,9 @@ if __name__ == "__main__":
         logging.info(f"{OmegaConf.to_yaml(config_cli)}")
         config = OmegaConf.merge(config, config_cli)
 
+    logging.info({"Full config:"})
+    logging.info(f"{OmegaConf.to_yaml(config)}") 
+
     # Validate config
     if config.progress.cross_id:
         assert (
@@ -597,7 +591,7 @@ if __name__ == "__main__":
         "masteraddress": "localhost",
     })
     args = OmegaConf.merge(args, config_cli)
-    
+
     world_rank = os.getenv("SLURM_PROCID", None)
     world_size = os.getenv("SLURM_NTASKS", None)
 
