@@ -76,6 +76,8 @@ Datasheet in the format of "Datasheets for datasets" as described in
     │   │   └── cam{cam_name_80}.zip
     │   ├── bg_image
     │   │   └── bg_image.zip
+    │   ├── expression_codes
+    │   │   └── aeparams_1440000.pkl
     │   ├── keypoints_3d
     │   │   └── keypoints_3d.zip
     │   ├── kinematic_tracking
@@ -111,7 +113,9 @@ Datasheet in the format of "Datasheets for datasets" as described in
     In our releases, `N_CAMERAS` is 80, and `N_FRAMES` is either around 5,000 or 10,000.
     The images follow the naming convention `{frame_id:06d}.avif`, as indicated in `frame_list.csv`, and are stored in avif format.
     The images are RGB, with resolution 1024 x 667 or 2048 x 1334 depending on the release package.
-    * `decoder/bg_image/bg_image.zip` is a zip file with `N_CAMERAS` images that contain the empty background (without person) for each viewpoint which is helpful for background removal. Background images are stored as `{cam_name}.avif`.
+    * `decoder/bg_image/bg_image.zip` is a zip file with `N_CAMERAS` images that contain the empty background (without person) for each viewpoint which is helpful for background removal. 
+   Background images are stored as `{cam_name}.avif`.
+    * `decoder/expression_codes/aeparams_1440000.pkl` is a pickled dictionary containing a mapping `frame_id => expression_code` where `expression_code` is a 256-dimensional code describing the person's facial expression at `frame_id`.
     * `decoder/keypoints_3d/keypoints_3d.zip` is a zip file with `N_FRAMES` files. Each file follows the format `{frame_id:06d}.npy`, and is a npy file with a matrix with up to 274 rows 6 rows representing 3d keypoints for each frame.
     Note that some keypoints may not be present if the number of inliers falls below a certain thresold. The format of each row is:
         ```

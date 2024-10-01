@@ -35,6 +35,7 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         "head_pose": ["head_pose/head_pose.zip"],
         "image": ["image/cam{camera}.zip"],
         "bg_image": ["bg_image/bg_image.zip"],
+        "expression_codes": ["expression_codes/aeparams_1440000.pkl"],
         "keypoints_3d": ["keypoints_3d/keypoints_3d.zip"],
         "kinematic_tracking": [
             "kinematic_tracking/registration_vertices_mean.npy",
