@@ -174,8 +174,10 @@ def main():
 
     for asset_name in list(args.assets.keys()):
         if asset_name in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset_name]:
-            print(f"[NOTE] Asset {asset_name} is only available for dataset sizes {ASSET_AVAILABILITIES[asset_name]}. "
-                  f"Skipping.")
+            print(
+                f"[NOTE] Asset {asset_name} is only available for dataset sizes {ASSET_AVAILABILITIES[asset_name]}. "
+                f"Skipping."
+            )
             args.assets.pop(asset_name)
 
     # Check captures file
