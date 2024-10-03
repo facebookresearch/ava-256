@@ -65,6 +65,14 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
     }
 )
 
+# If assets are listed here, it means they are only available for the specified dataset sizes
+ASSET_AVAILABILITIES: Dict[str, List[str]] = OrderedDict(
+    {
+        "background_image": ["4TB"],
+        "expression_codes": ["4TB"],
+    }
+)
+
 MULTI_CAM_ASSETS = ["image", "segmentation_parts"]
 
 
@@ -163,6 +171,12 @@ def main():
         logging.info("Downloading all assets")
     else:
         args.assets = {x: ASSETS[x] for x in args.assets}
+
+    for asset_name in list(args.assets.keys()):
+        if asset_name in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset_name]:
+            print(f"[NOTE] Asset {asset_name} is only available for dataset sizes {ASSET_AVAILABILITIES[asset_name]}. "
+                  f"Skipping.")
+            args.assets.pop(asset_name)
 
     # Check captures file
     captures = load_captures(args.captures_file)
