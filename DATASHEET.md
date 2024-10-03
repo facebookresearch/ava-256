@@ -74,6 +74,11 @@ Datasheet in the format of "Datasheets for datasets" as described in
     │   │   ├── cam{cam_name_02}.zip
     │   │   ├── ...
     │   │   └── cam{cam_name_80}.zip
+    │   ├── foreground_masks [4TB only]
+    │   │   ├── cam{cam_name_01}.zip
+    │   │   ├── cam{cam_name_02}.zip
+    │   │   ├── ...
+    │   │   └── cam{cam_name_80}.zip
     │   ├── background_image [4TB only]
     │   │   └── background_image.zip
     │   ├── expression_codes [4TB only]
@@ -113,6 +118,9 @@ Datasheet in the format of "Datasheets for datasets" as described in
     In our releases, `N_CAMERAS` is 80, and `N_FRAMES` is either around 5,000 or 10,000.
     The images follow the naming convention `{frame_id:06d}.avif`, as indicated in `frame_list.csv`, and are stored in avif format.
     The images are RGB, with resolution 1024 x 667 or 2048 x 1334 depending on the release package.
+    * `decoder/foreground_masks/cam{cam_name_XX}.zip` are `N_CAMERAS` uncompressed zip files containing `N_FRAMES` foreground masks (one for each RGB image) in avif format.
+    The foreground masks are 8bit gray-scale images indicating whether a pixel is foreground (high value) or background (low value). 
+    The RGB images' background may be masked out via `image - (1 - foreground_mask) * background_image` (assuming [0, 1] pixel ranges).
     * `decoder/background_image/background_image.zip` is a zip file with `N_CAMERAS` images that contain the empty background (without person) for each viewpoint which is helpful for background removal. 
    Background images are stored as `{cam_name}.avif`. Only available for the 4TB version of the dataset.
     * `decoder/expression_codes/aeparams_1440000.pkl` is a pickled dictionary containing a mapping `frame_id => expression_code` where `expression_code` is a 256-dimensional code describing the person's facial expression at `frame_id`. Only available for the 4TB version of the dataset.

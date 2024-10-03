@@ -48,6 +48,7 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         #     "lights/light_pattern.txt",
         # ],
         "segmentation_parts": ["segmentation_parts/cam{camera}.zip"],
+        "foreground_masks": ["foreground_masks/cam{camera}.zip"],
         "uv_image": [
             "uv_image/color_mean.png",
             "uv_image/color_variance.txt",
@@ -70,10 +71,14 @@ ASSET_AVAILABILITIES: Dict[str, List[str]] = OrderedDict(
     {
         "background_image": ["4TB"],
         "expression_codes": ["4TB"],
+        "foreground_masks": ["4TB"]
     }
 )
 
-MULTI_CAM_ASSETS = ["image", "segmentation_parts"]
+# Any assets listed here will not be downloaded by default. The can be included via the --optional_assets flag
+OPTIONAL_ASSETS: List[str] = ["foreground_masks"]
+
+MULTI_CAM_ASSETS = ["image", "segmentation_parts", "foreground_masks"]
 
 
 @dataclass(frozen=True)
@@ -148,6 +153,10 @@ def main():
     parser.add_argument(
         "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
+    parser.add_argument(
+        "--optional_assets", type=str, default=[], nargs="+",
+        help=f"List of optional assets to include in download when --assets 'all' is selected. "
+             f"Possible choices are {OPTIONAL_ASSETS}")
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
     parser.add_argument("--size", "-s", type=str, default="4TB", choices=["4TB", "8TB", "16TB", "32TB"])
@@ -172,13 +181,20 @@ def main():
     else:
         args.assets = {x: ASSETS[x] for x in args.assets}
 
-    for asset_name in list(args.assets.keys()):
-        if asset_name in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset_name]:
+    # Potentially include optional assets
+    for asset in args.optional_assets:
+        if asset not in OPTIONAL_ASSETS:
+            raise ValueError(f"Invalid optional asset '{asset}'. Must be one of {OPTIONAL_ASSETS}")
+        args.assets[asset] = ASSETS[asset]
+
+    # Check whether selected assets are available in specified dataset version
+    for asset in list(args.assets.keys()):
+        if asset in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset]:
             print(
-                f"[NOTE] Asset {asset_name} is only available for dataset sizes {ASSET_AVAILABILITIES[asset_name]}. "
+                f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. "
                 f"Skipping."
             )
-            args.assets.pop(asset_name)
+            args.assets.pop(asset)
 
     # Check captures file
     captures = load_captures(args.captures_file)
