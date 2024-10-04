@@ -71,7 +71,7 @@ ASSET_AVAILABILITIES: Dict[str, List[str]] = OrderedDict(
     {"background_image": ["4TB"], "expression_codes": ["4TB"], "foreground_masks": ["4TB"]}
 )
 
-# Any assets listed here will not be downloaded by default. The can be included via the --optional_assets flag
+# Any assets listed here will not be downloaded by default. They can be included via the --optional_assets flag
 OPTIONAL_ASSETS: List[str] = ["foreground_masks"]
 
 MULTI_CAM_ASSETS = ["image", "segmentation_parts", "foreground_masks"]
