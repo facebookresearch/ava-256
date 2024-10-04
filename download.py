@@ -154,9 +154,13 @@ def main():
         "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
     parser.add_argument(
-        "--optional_assets", type=str, default=[], nargs="+",
+        "--optional_assets",
+        type=str,
+        default=[],
+        nargs="+",
         help=f"List of optional assets to include in download when --assets 'all' is selected. "
-             f"Possible choices are {OPTIONAL_ASSETS}")
+        f"Possible choices are {OPTIONAL_ASSETS}"
+    )
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
     parser.add_argument("--size", "-s", type=str, default="4TB", choices=["4TB", "8TB", "16TB", "32TB"])
@@ -191,8 +195,7 @@ def main():
     for asset in list(args.assets.keys()):
         if asset in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset]:
             print(
-                f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. "
-                f"Skipping."
+                f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. Skipping."
             )
             args.assets.pop(asset)
 
