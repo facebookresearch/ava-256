@@ -68,11 +68,7 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
 
 # If assets are listed here, it means they are only available for the specified dataset sizes
 ASSET_AVAILABILITIES: Dict[str, List[str]] = OrderedDict(
-    {
-        "background_image": ["4TB"],
-        "expression_codes": ["4TB"],
-        "foreground_masks": ["4TB"]
-    }
+    {"background_image": ["4TB"], "expression_codes": ["4TB"], "foreground_masks": ["4TB"]}
 )
 
 # Any assets listed here will not be downloaded by default. The can be included via the --optional_assets flag
