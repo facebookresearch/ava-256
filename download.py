@@ -159,7 +159,7 @@ def main():
         default=[],
         nargs="+",
         help=f"List of optional assets to include in download when --assets 'all' is selected. "
-        f"Possible choices are {OPTIONAL_ASSETS}"
+        f"Possible choices are {OPTIONAL_ASSETS}",
     )
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
@@ -194,9 +194,7 @@ def main():
     # Check whether selected assets are available in specified dataset version
     for asset in list(args.assets.keys()):
         if asset in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset]:
-            print(
-                f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. Skipping."
-            )
+            print(f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. Skipping.")
             args.assets.pop(asset)
 
     # Check captures file
