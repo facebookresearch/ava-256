@@ -20,7 +20,7 @@ from PIL import Image
 from trimesh import Trimesh
 from trimesh.triangles import points_to_barycentric
 
-from data.utils import MugsyCapture
+from data.utils import HeadsetCapture, MugsyCapture
 
 
 def closest_point(mesh, points):
@@ -427,6 +427,36 @@ def train_csv_loader(base_dir: Path, csv_path: Path, nids: int) -> Tuple[List[Mu
         train_captures.append(capture)
 
         capture_dir = f"{base_dir}/{capture.folder_name()}/decoder"
+        train_dirs.append(capture_dir)
+
+    return train_captures, train_dirs
+
+
+def train_headset_csv_loader(
+    base_dir: Path, csv_path: Path, identities: Optional[List[str]] = None
+) -> Tuple[List[HeadsetCapture], List[str]]:
+    """loads train data (headset) by id given the csv file of ids
+    Args:
+        base_dir (Path): base directory for the dataset
+        csv_path (Path): id csv file path
+        identities (Optional[List[str]]): identities to use; if None, all identities are used
+
+    Returns:
+        List[HeadsetCapture]: train_captures: list of headset captures
+        List[Path]: train_dirs: list of directories for all captures
+    """
+    df = pd.read_csv(csv_path, dtype=str)
+
+    train_captures = []
+    train_dirs = []
+
+    for capture in df.itertuples():
+        if identities is not None and f"{capture.sid}_{capture.hcd}--{capture.hct}" not in identities:
+            continue
+        capture = HeadsetCapture(hcd=capture.hcd, hct=capture.hct, sid=capture.sid)
+        train_captures.append(capture)
+
+        capture_dir = f"{base_dir}/{capture.folder_name()}"
         train_dirs.append(capture_dir)
 
     return train_captures, train_dirs

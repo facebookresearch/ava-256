@@ -96,6 +96,23 @@ def get_framelist_neuttex_and_neutvert(
     return framelist, neut_avgtex, neut_vert
 
 
+class HeadsetCapture:
+    """Unique identifier for a Headset capture"""
+
+    def __init__(
+        self,
+        hcd: str,  # Headset capture date in 'yyyymmdd' format, eg `20210223`
+        hct: str,  # Headset capture time in 'hhmm' format, eg `1023`
+        sid: str,  # Subject ID, three letters and three numbers, eg `avw368`
+    ):
+        self.hcd = hcd
+        self.hct = hct
+        self.sid = sid
+
+    def folder_name(self) -> str:
+        return f"{self.sid}_{self.hcd}--{self.hct}"
+
+
 def getitem(idx: int, framelist, cameras):
     segment_and_frame = framelist.iloc[idx // len(cameras)]
     segment: str = segment_and_frame.seg_id
