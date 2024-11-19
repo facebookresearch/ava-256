@@ -17,23 +17,23 @@ from tqdm import tqdm
 from data.ava_dataset import MultiCaptureDataset as AvaMultiCaptureDataset
 from data.ava_dataset import SingleCaptureDataset as AvaSingleCaptureDataset
 from data.ava_dataset import none_collate_fn
-from data.utils import MugsyCapture
-from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
+from data.utils import MugsyCapture, get_framelist_neuttex_and_neutvert
+from utils import get_autoencoder, load_checkpoint, train_csv_loader, xid_eval
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize Cross ID driving")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/aeparams.pt", help="checkpoint location")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/aeparams_300000.pt", help="checkpoint location")
     parser.add_argument("--output-dir", type=str, default="viz/", help="output image directory")
-    parser.add_argument("--config", default="configs/config.yaml", type=str, help="config yaml file")
+    parser.add_argument("--config", default="configs/config-4.yaml", type=str, help="config yaml file")
 
     # Cross ID visualization configuration
-    parser.add_argument("--driver-id", type=str, default="20230324--0820--AEY864", help="id of the driver avatar")
-    parser.add_argument("--driven-id", type=str, default="20230831--0814--ADL311", help="id of the driven avatar")
+    parser.add_argument("--driver-id", type=str, default="20230405--1635--AAN112", help="id of the driver avatar")
+    parser.add_argument("--driven-id-indices", type=list, default=[1, 2, 3], help="id of the driven avatar")
     parser.add_argument("--camera-id", type=str, default="401031", help="render camera id")
     parser.add_argument(
         "--segment-id",
         type=str,
-        default="EXP_eyes_blink_light_medium_hard_wink",
+        default="SEN_all_your_wishful_thinking_wont_change_that",
         help="segment to render; render all available frames if None",
     )
     parser.add_argument("--opts", default=[], type=str, nargs="+")
@@ -46,9 +46,9 @@ if __name__ == "__main__":
 
     train_params = config.train
 
-    output_dir = args.output_dir + "/" + args.driver_id + "_" + args.driven_id + "+" + args.segment_id
+    output_dir = args.output_dir + "/" + args.driver_id + "+" + args.segment_id
 
-    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(output_dir + "/x-id").mkdir(parents=True, exist_ok=True)
 
     # Train dataset mean/std texture and vertex for normalization
     train_captures, train_dirs = train_csv_loader(train_params.dataset_dir, train_params.data_csv, train_params.nids)
@@ -83,13 +83,6 @@ if __name__ == "__main__":
     driver_dir = f"{train_params.dataset_dir}/{args.driver_id}/decoder"
     driver_dataset = AvaSingleCaptureDataset(driver_capture, driver_dir, downsample=train_params.downsample)
 
-    # Driven capture dataloader
-    driven_capture = MugsyCapture(
-        mcd=args.driven_id.split("--")[0], mct=args.driven_id.split("--")[1], sid=args.driven_id.split("--")[2]
-    )
-    driven_dir = f"{train_params.dataset_dir}/{args.driven_id}/decoder"
-    driven_dataset = AvaSingleCaptureDataset(driven_capture, driven_dir, downsample=train_params.downsample)
-
     texmean = dataset.texmean
     vertmean = dataset.vertmean
     texstd = dataset.texstd
@@ -99,7 +92,7 @@ if __name__ == "__main__":
     del dataset
 
     # Grab driven normalization stats
-    for dataset in [driver_dataset, driven_dataset]:
+    for dataset in [driver_dataset]:  # ,driven_dataset]:
         dataset.texmean = texmean
         dataset.texstd = texstd
         dataset.vertmean = vertmean
@@ -132,92 +125,34 @@ if __name__ == "__main__":
         collate_fn=none_collate_fn,
     )
 
-    driven_loader = torch.utils.data.DataLoader(
-        driven_dataset,
-        batch_size=batchsize,
-        shuffle=False,
-        drop_last=False,
-        num_workers=numworkers,
-        collate_fn=none_collate_fn,
-    )
-    driveniter = iter(driven_loader)
-    driven = next(driveniter)
-
-    while driven is None:
-        driven = next(driveniter)
+    driver_dataiter = iter(driver_loader)
 
     it = 0
 
-    for driver in tqdm(driver_loader, desc="Rendering Frames"):
-        # Skip if any of the frames is empty
-        if driver is None:
-            continue
+    # Store neut avgtex and neut vert from all ids for x-id check
+    all_neut_avgtex_vert = []
 
-        cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)
-        cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driven)
+    for directory in train_dirs:
+        _, neut_avgtex, neut_vert = get_framelist_neuttex_and_neutvert(directory)
 
-        running_avg_scale = False
-        gt_geo = None
-        residuals_weight = 1.0
-        output_set = set(["irgbrec", "bg"])
+        neut_avgtex = (neut_avgtex - dataset.texmean) / dataset.texstd
+        neut_verts = (neut_vert - dataset.vertmean) / dataset.vertstd
+        all_neut_avgtex_vert.append({"neut_avgtex": torch.tensor(neut_avgtex), "neut_verts": torch.tensor(neut_verts)})
 
-        # Generate image from original inputs
-        output_orig = ae(
-            camrot=cudadriver["camrot"],
-            campos=cudadriver["campos"],
-            focal=cudadriver["focal"],
-            princpt=cudadriver["princpt"],
-            modelmatrix=cudadriver["modelmatrix"],
-            avgtex=cudadriver["avgtex"],
-            verts=cudadriver["verts"],
-            neut_avgtex=cudadriver["neut_avgtex"],
-            neut_verts=cudadriver["neut_verts"],
-            target_neut_avgtex=cudadriver["neut_avgtex"],
-            target_neut_verts=cudadriver["neut_verts"],
-            pixelcoords=cudadriver["pixelcoords"],
-            idindex=cudadriver["idindex"],
-            camindex=cudadriver["camindex"],
-            running_avg_scale=running_avg_scale,
-            gt_geo=gt_geo,
-            residuals_weight=residuals_weight,
-            output_set=output_set,
+    output_set = set(train_params.output_set)
+
+    for i in tqdm(range(len(driver_dataset.framelist.values.tolist()) - 1), desc="Rendering X-id frames"):
+        xid_eval(
+            ae,
+            driver_dataiter,
+            all_neut_avgtex_vert,
+            config,
+            output_set,
+            output_dir,
+            0,
+            i,
+            indices_subjects=args.driven_id_indices,
+            training=False,
         )
 
-        # Generate image from cross id texture and vertex
-        output_driven = ae(
-            camrot=cudadriver["camrot"],
-            campos=cudadriver["campos"],
-            focal=cudadriver["focal"],
-            princpt=cudadriver["princpt"],
-            modelmatrix=cudadriver["modelmatrix"],
-            avgtex=cudadriver["avgtex"],
-            verts=cudadriver["verts"],
-            # normalized using the train data stats and driven data stats
-            neut_avgtex=cudadriver["neut_avgtex"],
-            neut_verts=cudadriver["neut_verts"],
-            target_neut_avgtex=cudadriven["neut_avgtex"],
-            target_neut_verts=cudadriven["neut_verts"],
-            pixelcoords=cudadriver["pixelcoords"],
-            idindex=cudadriver["idindex"],
-            camindex=cudadriver["camindex"],
-            running_avg_scale=running_avg_scale,
-            gt_geo=gt_geo,
-            residuals_weight=residuals_weight,
-            output_set=output_set,
-        )
-
-        # Grab ground truth frame from the driver
-        gt = cudadriver["image"].detach().cpu().numpy()
-        gt = einops.rearrange(gt, "1 c h w -> h w c")
-
-        rgb_orig = output_orig["irgbrec"].detach().cpu().numpy()
-        rgb_orig = einops.rearrange(rgb_orig, "1 c h w -> h w c")
-
-        rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
-        rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
-
-        render_img([[gt, rgb_orig, rgb_driven]], f"{output_dir}/img_{it:06d}.png")
-
-        it += 1
-
-    print(f"Done! Saved {it} images to {output_dir}")
+    print(f"Done! Saved {i} images to {output_dir}")

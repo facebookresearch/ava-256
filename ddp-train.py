@@ -36,7 +36,7 @@ from data.ava_dataset import none_collate_fn
 from data.utils import get_framelist_neuttex_and_neutvert
 from losses import mean_ell_1
 from models.bottlenecks.vae import kl_loss_stable
-from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader
+from utils import get_autoencoder, load_checkpoint, render_img, tocuda, train_csv_loader, xid_eval
 
 sys.dont_write_bytecode = True
 
@@ -175,92 +175,6 @@ def prepare(rank, world_size, train_params):
     logging.info("Datasets instantiated ({:.2f} s)".format(time.time() - starttime))
 
     return dataset, all_neut_avgtex_vert, dataloader, driver_dataloader
-
-
-def xid_eval(model, driver_dataiter, all_neut_avgtex_vert, config, output_set, outpath, rank, iternum):
-    starttime = time.time()
-
-    indices_subjects = random.sample(range(0, len(all_neut_avgtex_vert)), config.progress.cross_id_n_subjects)
-    indices_subjects.sort()
-    model.eval()
-
-    with torch.no_grad():
-        driver = next(driver_dataiter)
-        while driver is None:
-            driver = next(driver_dataiter)
-
-        cudadriver: Dict[str, Union[torch.Tensor, int, str]] = tocuda(driver)
-
-        gt = cudadriver["image"].detach().cpu().numpy()
-        gt = einops.rearrange(gt, "1 c h w -> h w c")
-        renderImages_xid = []
-        renderImages_xid.append(gt)
-
-        running_avg_scale = False
-        gt_geo = None
-        residuals_weight = 1.0
-
-        output_driver = model(
-            cudadriver["camrot"],
-            cudadriver["campos"],
-            cudadriver["focal"],
-            cudadriver["princpt"],
-            cudadriver["modelmatrix"],
-            cudadriver["avgtex"],
-            cudadriver["verts"],
-            cudadriver["neut_avgtex"],
-            cudadriver["neut_verts"],
-            cudadriver["neut_avgtex"],
-            cudadriver["neut_verts"],
-            cudadriver["pixelcoords"],
-            cudadriver["idindex"],
-            cudadriver["camindex"],
-            running_avg_scale=running_avg_scale,
-            gt_geo=gt_geo,
-            residuals_weight=residuals_weight,
-            output_set=output_set,
-        )
-
-        rgb_driver = output_driver["irgbrec"].detach().cpu().numpy()
-        rgb_driver = einops.rearrange(rgb_driver, "1 c h w -> h w c")
-        del output_driver
-        renderImages_xid.append(rgb_driver)
-
-        for i in indices_subjects:
-            if i == int(cudadriver["idindex"][0]):
-                continue
-            cudadriven: Dict[str, Union[torch.Tensor, int, str]] = tocuda(all_neut_avgtex_vert[i])
-
-            output_driven = model(
-                cudadriver["camrot"],
-                cudadriver["campos"],
-                cudadriver["focal"],
-                cudadriver["princpt"],
-                cudadriver["modelmatrix"],
-                cudadriver["avgtex"],
-                cudadriver["verts"],
-                cudadriver["neut_avgtex"],
-                cudadriver["neut_verts"],
-                torch.unsqueeze(cudadriven["neut_avgtex"], 0),
-                torch.unsqueeze(cudadriven["neut_verts"], 0),
-                cudadriver["pixelcoords"],
-                cudadriver["idindex"],
-                cudadriver["camindex"],
-                running_avg_scale=running_avg_scale,
-                gt_geo=gt_geo,
-                residuals_weight=residuals_weight,
-                output_set=output_set,
-            )
-            rgb_driven = output_driven["irgbrec"].detach().cpu().numpy()
-            rgb_driven = einops.rearrange(rgb_driven, "1 c h w -> h w c")
-            del output_driven
-            renderImages_xid.append(rgb_driven)
-            del cudadriven
-    del cudadriver
-    if rank == 0:
-        render_img([renderImages_xid], f"{outpath}/x-id/progress_{iternum}.png")
-
-    print(f"Cross ID viz took {time.time() - starttime}")
 
 
 def main(rank, config, args):
