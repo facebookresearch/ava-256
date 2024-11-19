@@ -14,7 +14,7 @@
 source /uca/conda-envs/activate-latest
 
 export GLOG_minloglevel=2
-export NCCL_ASYNC_ERROR_HANDLING=1
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export DB_CACHE_DIR=/shared/airstore_index/avatar_index_cache
 
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
