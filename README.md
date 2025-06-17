@@ -82,6 +82,8 @@ https://github.com/facebookresearch/ava-256/assets/3733964/41613355-00f1-479e-9c
 ## Tests
 You can run tests with `python -m pytest tests/`
 
+## License
+ava-256 is CC BY-NC 4.0 licensed, as found in the LICENSE file.
 
 ## Citation
 
