@@ -54,11 +54,17 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         # NOTE(julieta) encoder data is a framelist and 5 cameras that we hardcode here
         "encoder": [
             "frame_list.csv",
+            "encodings_framelist.csv",
+            "encodings_gt.pt",
             "image/cam-cyclop.zip",
             "image/cam-left-eye-atl-temporal.zip",
             "image/cam-left-mouth.zip",
             "image/cam-right-eye-atl-temporal.zip",
             "image/cam-right-mouth.zip",
+        ],
+        # NOTE(julieta) checkpoints of encoders and decoders
+        "checkpoints": [
+            "decoder/aeparams_1440000.pt",
         ],
     }
 )
@@ -219,6 +225,10 @@ def main():
                     to_path = output_dir / capture_path / "encoder" / asset_path
                     links_and_paths.append((from_url, to_path))
 
+            elif assets == "checkpoints":
+                # NOTE(julieta) checkpoints are per-dataset, not per-capture
+                continue
+
             else:
 
                 # Generate donwload links for all the assets
@@ -226,6 +236,16 @@ def main():
                     from_url = dataset_path + capture_path + "/decoder/" + asset_path
                     to_path = output_dir / capture_path / "decoder" / asset_path
                     links_and_paths.append((from_url, to_path))
+
+    # Assets for the entire dataset, not per capture, such as checkpoints
+    for assets, asset_paths in args.assets.items():
+        if assets == "checkpoints":
+
+            # Special case for checkpoints
+            for asset_path in asset_paths:
+                from_url = dataset_path + "checkpoints/" + asset_path
+                to_path = output_dir / "checkpoints" / asset_path
+                links_and_paths.append((from_url, to_path))
 
     # Done creating links, donwload everything
     total_links = len(links_and_paths)
