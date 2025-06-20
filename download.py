@@ -34,6 +34,8 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         "frame_list": ["frame_list.csv"],
         "head_pose": ["head_pose/head_pose.zip"],
         "image": ["image/cam{camera}.zip"],
+        "background_image": ["background_image/background_image.zip"],
+        "expression_codes": ["expression_codes/aeparams_1440000.pkl"],
         "keypoints_3d": ["keypoints_3d/keypoints_3d.zip"],
         "kinematic_tracking": [
             "kinematic_tracking/registration_vertices_mean.npy",
@@ -46,6 +48,7 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
         #     "lights/light_pattern.txt",
         # ],
         "segmentation_parts": ["segmentation_parts/cam{camera}.zip"],
+        "foreground_masks": ["foreground_masks/cam{camera}.zip"],
         "uv_image": [
             "uv_image/color_mean.png",
             "uv_image/color_variance.txt",
@@ -63,7 +66,15 @@ ASSETS: Dict[str, List[str]] = OrderedDict(
     }
 )
 
-MULTI_CAM_ASSETS = ["image", "segmentation_parts"]
+# If assets are listed here, it means they are only available for the specified dataset sizes
+ASSET_AVAILABILITIES: Dict[str, List[str]] = OrderedDict(
+    {"background_image": ["4TB"], "expression_codes": ["4TB"], "foreground_masks": ["4TB"]}
+)
+
+# Any assets listed here will not be downloaded by default. They can be included via the --optional_assets flag
+OPTIONAL_ASSETS: List[str] = ["foreground_masks"]
+
+MULTI_CAM_ASSETS = ["image", "segmentation_parts", "foreground_masks"]
 
 
 @dataclass(frozen=True)
@@ -138,6 +149,14 @@ def main():
     parser.add_argument(
         "--assets", type=str, default=["all"], nargs="+", help=f"List of assets to download. Must be in {ASSETS.keys()}"
     )
+    parser.add_argument(
+        "--optional_assets",
+        type=str,
+        default=[],
+        nargs="+",
+        help=f"List of optional assets to include in download when --assets 'all' is selected. "
+        f"Possible choices are {OPTIONAL_ASSETS}",
+    )
     parser.add_argument("-n", type=int, default=16, help="Number of captures from captures-file download")
     parser.add_argument("--workers", "-j", type=int, default=8, help="Number of workers for parallel download")
     parser.add_argument("--size", "-s", type=str, default="4TB", choices=["4TB", "8TB", "16TB", "32TB"])
@@ -161,6 +180,18 @@ def main():
         logging.info("Downloading all assets")
     else:
         args.assets = {x: ASSETS[x] for x in args.assets}
+
+    # Potentially include optional assets
+    for asset in args.optional_assets:
+        if asset not in OPTIONAL_ASSETS:
+            raise ValueError(f"Invalid optional asset '{asset}'. Must be one of {OPTIONAL_ASSETS}")
+        args.assets[asset] = ASSETS[asset]
+
+    # Check whether selected assets are available in specified dataset version
+    for asset in list(args.assets.keys()):
+        if asset in ASSET_AVAILABILITIES and args.size not in ASSET_AVAILABILITIES[asset]:
+            print(f"[NOTE] Asset {asset} is only available for dataset sizes {ASSET_AVAILABILITIES[asset]}. Skipping.")
+            args.assets.pop(asset)
 
     # Check captures file
     captures = load_captures(args.captures_file)
